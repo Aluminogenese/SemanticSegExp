@@ -269,16 +269,16 @@ def train_net(net,
 def get_args():
     parser = argparse.ArgumentParser(description='Train HRNet-OCR for building segmentation')
     parser.add_argument('--train-img', dest='train_img', type=str, 
-                       default='/mnt/U/Dat_Seg/4bands/train/images/',
+                       default='/mnt/U/Dat_Seg/dat_4bands/train/images/',
                        help='Directory of train images')
     parser.add_argument('--train-mask', dest='train_mask', type=str,
-                       default='/mnt/U/Dat_Seg/4bands/train/labels/',
+                       default='/mnt/U/Dat_Seg/dat_4bands/train/labels/',
                        help='Directory of train masks')
     parser.add_argument('--val-img', dest='val_img', type=str,
-                       default='/mnt/U/Dat_Seg/4bands/val/images/',
+                       default='/mnt/U/Dat_Seg/dat_4bands/val/images/',
                        help='Directory of validation images')
     parser.add_argument('--val-mask', dest='val_mask', type=str,
-                       default='/mnt/U/Dat_Seg/4bands/val/labels/',
+                       default='/mnt/U/Dat_Seg/dat_4bands/val/labels/',
                        help='Directory of validation masks')
     parser.add_argument('-e', '--epochs', type=int, default=400,
                        help='Number of epochs')
@@ -291,7 +291,7 @@ def get_args():
     parser.add_argument('-s', '--scale', type=float, default=1.0,
                        help='Downscaling factor of images')
     parser.add_argument('--model', type=str, default='unet',
-                       choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 'hrnet_ocr_w48', 'ms_hrnet_w48'],
+                       choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 'hrnet_ocr', 'ms_hrnet'],
                        help='Model architecture')
     parser.add_argument('--in-ch', type=int, default=4,
                        help='Number of input channels')
@@ -325,9 +325,9 @@ if __name__ == '__main__':
         net = PSPNet(in_channels=args.in_ch, num_classes=1)
     elif args.model == 'deeplabv3_plus':
         net = DeepLabV3Plus(in_channels=args.in_ch, num_classes=1)
-    elif args.model == 'hrnet_ocr_w48':
+    elif args.model == 'hrnet_ocr':
         net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model == 'ms_hrnet_w48':
+    elif args.model == 'ms_hrnet':
         net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     else:
         raise ValueError(f'Unknown model architecture: {args.model}')

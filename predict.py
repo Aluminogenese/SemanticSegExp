@@ -14,7 +14,7 @@ from PIL import Image
 from glob import glob
 import json
 
-from hrnet_building_seg import hrnet_ocr_w18, hrnet_ocr_w32, hrnet_ocr_w48
+from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNetOCR, MSHRNetOCR
 
 
 def read_image_any(path):
@@ -178,8 +178,8 @@ def main():
     parser.add_argument('--model', '-m', default='checkpoints/BEST_hrnet_w48_4bands.pth', help='模型权重路径')
     parser.add_argument('--input', '-i', nargs='+', default=['/mnt/U/Dat_Seg/4bands/test/images/*.tif'], help='输入图像路径')
     parser.add_argument('--output', '-o',default='predict_results', help='输出目录或文件路径')
-    parser.add_argument('--model-type', default='hrnet_w48',
-                       choices=['hrnet_w18', 'hrnet_w32', 'hrnet_w48'],
+    parser.add_argument('--model-type', default='unet',
+                       choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 'hrnet_ocr_w48', 'ms_hrnet_w48'],
                        help='模型类型')
     parser.add_argument('--in-ch', type=int, default=4, help='输入通道数')
     parser.add_argument('--tta', action='store_true', help='启用TTA（8x变换）')
@@ -196,12 +196,20 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Using device {device}')
     
-    if args.model_type == 'hrnet_w18':
-        net = hrnet_ocr_w18(in_channels=args.in_ch, num_classes=1)
-    elif args.model_type == 'hrnet_w32':
-        net = hrnet_ocr_w32(in_channels=args.in_ch, num_classes=1)
+    if args.model_type == 'unet':
+        net = UNet(in_channels=args.in_ch, num_classes=1)
+    elif args.model_type == 'unet_plusplus':
+        net = UNetPlusPlus(in_channels=args.in_ch, num_classes=1)
+    elif args.model_type == 'pspnet':
+        net = PSPNet(in_channels=args.in_ch, num_classes=1)
+    elif args.model_type == 'deeplabv3_plus':
+        net = DeepLabV3Plus(in_channels=args.in_ch, num_classes=1)
+    elif args.model_type == 'hrnet_ocr_w48':
+        net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
+    elif args.model_type == 'ms_hrnet_w48':
+        net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     else:
-        net = hrnet_ocr_w48(in_channels=args.in_ch, num_classes=1)
+        raise ValueError(f'Unknown model architecture: {args.model}')
     
     net.load_state_dict(torch.load(args.model, map_location=device))
     net.to(device=device)

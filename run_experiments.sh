@@ -7,10 +7,10 @@ export CUDA_VISIBLE_DEVICES="$GPU"
 
 # 数据集路径（可通过环境变量覆盖）
 DATASET_NAME="${DATASET_NAME:-4bands}"
-TRAIN_IMG="${TRAIN_IMG:-/mnt/U/Dat_Seg/4bands/train/images/}"
-TRAIN_MASK="${TRAIN_MASK:-/mnt/U/Dat_Seg/4bands/train/labels/}"
-VAL_IMG="${VAL_IMG:-/mnt/U/Dat_Seg/4bands/val/images/}"
-VAL_MASK="${VAL_MASK:-/mnt/U/Dat_Seg/4bands/val/labels/}"
+TRAIN_IMG="${TRAIN_IMG:-/mnt/U/Dat_Seg/dat_4bands/train/images/}"
+TRAIN_MASK="${TRAIN_MASK:-/mnt/U/Dat_Seg/dat_4bands/train/labels/}"
+VAL_IMG="${VAL_IMG:-/mnt/U/Dat_Seg/dat_4bands/val/images/}"
+VAL_MASK="${VAL_MASK:-/mnt/U/Dat_Seg/dat_4bands/val/labels/}"
 
 # 训练超参（可通过环境变量覆盖）
 IN_CH="${IN_CH:-4}"

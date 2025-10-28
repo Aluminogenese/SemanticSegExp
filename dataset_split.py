@@ -15,9 +15,9 @@ import json
 
 
 def split_dataset(
-    src_img_dir='/mnt/U/Dat_Seg/4bands/images/',
-    src_mask_dir='/mnt/U/Dat_Seg/4bands/labels/',
-    dst_root='/mnt/U/Dat_Seg/4bands_split/',
+    src_img_dir='/mnt/U/Dat_Seg/4bands_raw/images/',
+    src_mask_dir='/mnt/U/Dat_Seg/4bands_raw/labels/',
+    dst_root='4bands/',
     train_ratio=0.8,
     val_ratio=0.1,
     test_ratio=0.1,
@@ -157,7 +157,7 @@ def split_dataset(
     return split_info
 
 
-def verify_split(dst_root='/mnt/U/Dat_Seg/4bands_split/'):
+def verify_split(dst_root='/mnt/U/Dat_Seg/4bands/'):
     """验证数据划分的完整性"""
     dst_root = Path(dst_root)
     
@@ -192,7 +192,7 @@ def verify_split(dst_root='/mnt/U/Dat_Seg/4bands_split/'):
             print(f"  ✅ 数据完整")
 
 
-def create_file_lists(dst_root='/mnt/U/Dat_Seg/4bands_split/'):
+def create_file_lists(dst_root='/mnt/U/Dat_Seg/4bands/'):
     """创建文件列表（方便某些训练框架使用）"""
     dst_root = Path(dst_root)
     
@@ -211,7 +211,7 @@ def create_file_lists(dst_root='/mnt/U/Dat_Seg/4bands_split/'):
         print(f"创建文件列表: {list_file}")
 
 
-def show_split_statistics(dst_root='/mnt/U/Dat_Seg/4bands_split/'):
+def show_split_statistics(dst_root='/mnt/U/Dat_Seg/4bands/'):
     """显示数据集统计信息"""
     import numpy as np
     from PIL import Image
@@ -255,18 +255,18 @@ if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser(description='数据集划分工具')
-    parser.add_argument('--src-img', default='/mnt/U/Dat_Seg/4bands/images/',
+    parser.add_argument('--src-img', default='/mnt/U/Dat_Seg/4bands_raw/images/',
                        help='源图像目录')
-    parser.add_argument('--src-mask', default='/mnt/U/Dat_Seg/4bands/labels/',
+    parser.add_argument('--src-mask', default='/mnt/U/Dat_Seg/4bands_raw/labels/',
                        help='源mask目录')
-    parser.add_argument('--dst-root', default='/mnt/U/Dat_Seg/4bands_split/',
+    parser.add_argument('--dst-root', default='4bands/',
                        help='目标根目录')
-    parser.add_argument('--train-ratio', type=float, default=0.7,
-                       help='训练集比例 (default: 0.7)')
-    parser.add_argument('--val-ratio', type=float, default=0.15,
-                       help='验证集比例 (default: 0.15)')
-    parser.add_argument('--test-ratio', type=float, default=0.15,
-                       help='测试集比例 (default: 0.15)')
+    parser.add_argument('--train-ratio', type=float, default=0.8,
+                       help='训练集比例 (default: 0.8)')
+    parser.add_argument('--val-ratio', type=float, default=0.1,
+                       help='验证集比例 (default: 0.1)')
+    parser.add_argument('--test-ratio', type=float, default=0.1,
+                       help='测试集比例 (default: 0.1)')
     parser.add_argument('--seed', type=int, default=42,
                        help='随机种子 (default: 42)')
     parser.add_argument('--symlink', action='store_true',
@@ -281,16 +281,17 @@ if __name__ == '__main__':
         show_split_statistics(args.dst_root)
     else:
         # 执行划分
-        split_info = split_dataset(
-            src_img_dir=args.src_img,
-            src_mask_dir=args.src_mask,
-            dst_root=args.dst_root,
-            train_ratio=args.train_ratio,
-            val_ratio=args.val_ratio,
-            test_ratio=args.test_ratio,
-            seed=args.seed,
-            copy_files=not args.symlink
-        )
+        # split_info = split_dataset(
+        #     src_img_dir=args.src_img,
+        #     src_mask_dir=args.src_mask,
+        #     dst_root=args.dst_root,
+        #     train_ratio=args.train_ratio,
+        #     val_ratio=args.val_ratio,
+        #     test_ratio=args.test_ratio,
+        #     seed=args.seed,
+        #     copy_files=not args.symlink
+        # )
+        split_info = split_dataset()
         
         # 验证
         verify_split(args.dst_root)

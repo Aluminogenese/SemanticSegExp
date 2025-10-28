@@ -16,8 +16,8 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import binary_dilation, binary_erosion
 import json
 
-from hrnet_building_seg import hrnet_ocr_w18, hrnet_ocr_w32, hrnet_ocr_w48
-from predict_hrnet import read_image_any, normalize_image
+from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNetOCR, MSHRNetOCR
+from predict import read_image_any, normalize_image
 
 
 def calculate_metrics(pred, gt):
@@ -315,11 +315,11 @@ def plot_metrics_distribution(all_metrics, output_dir):
 
 def main():
     parser = argparse.ArgumentParser(description='Evaluate HRNet-OCR on test dataset')
-    parser.add_argument('--model', '-m', default='checkpoints/BEST_hrnet_w48_4bands.pth', help='模型权重路径')
+    parser.add_argument('--model', '-m', default='checkpoints/BEST_mshrnet_w48_4bands.pth', help='模型权重路径')
     parser.add_argument('--img-dir', default='/mnt/U/Dat_Seg/4bands/test/images/', help='测试图像目录')
     parser.add_argument('--gt-dir', default='/mnt/U/Dat_Seg/4bands/test/labels/', help='真值mask目录')
-    parser.add_argument('--model-type', default='hrnet_w48',
-                       choices=['hrnet_w18', 'hrnet_w32', 'hrnet_w48'])
+    parser.add_argument('--model-type', default='ms_hrnet_w48',
+                       choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 'hrnet_ocr_w48', 'ms_hrnet_w48'])
     parser.add_argument('--in-ch', type=int, default=4)
     parser.add_argument('--threshold', type=float, default=0.5)
     parser.add_argument('--output-dir', default='evaluation_results')
@@ -338,12 +338,20 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Using device {device}')
     
-    if args.model_type == 'hrnet_w18':
-        net = hrnet_ocr_w18(in_channels=args.in_ch, num_classes=1)
-    elif args.model_type == 'hrnet_w32':
-        net = hrnet_ocr_w32(in_channels=args.in_ch, num_classes=1)
+    if args.model_type == 'unet':
+        net = UNet(in_channels=args.in_ch, num_classes=1)
+    elif args.model_type == 'unet_plusplus':
+        net = UNetPlusPlus(in_channels=args.in_ch, num_classes=1)
+    elif args.model_type == 'pspnet':
+        net = PSPNet(in_channels=args.in_ch, num_classes=1)
+    elif args.model_type == 'deeplabv3_plus':
+        net = DeepLabV3Plus(in_channels=args.in_ch, num_classes=1)
+    elif args.model_type == 'hrnet_ocr_w48':
+        net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
+    elif args.model_type == 'ms_hrnet_w48':
+        net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     else:
-        net = hrnet_ocr_w48(in_channels=args.in_ch, num_classes=1)
+        raise ValueError(f'Unknown model architecture: {args.model}')
     
     net.load_state_dict(torch.load(args.model, map_location=device))
     net.to(device=device)
@@ -386,7 +394,7 @@ def main():
     print('='*60 + '\n')
     
     # 保存结果
-    summary_path = output_dir / 'summary.json'
+    summary_path = output_dir / f'{args.model_type}_summary.json'
     with open(summary_path, 'w') as f:
         json.dump(summary, f, indent=2)
     logging.info(f'Summary saved to {summary_path}')
