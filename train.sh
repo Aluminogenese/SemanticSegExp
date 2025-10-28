@@ -6,7 +6,7 @@ GPU="${GPU:-0}"
 export CUDA_VISIBLE_DEVICES="$GPU"
 
 # 数据集路径（可通过环境变量覆盖）
-DATASET_NAME="${DATASET_NAME:-4bands}"
+DATASET_NAME="${DATASET_NAME:-dat_4bands}"
 TRAIN_IMG="${TRAIN_IMG:-/mnt/U/Dat_Seg/dat_4bands/train/images/}"
 TRAIN_MASK="${TRAIN_MASK:-/mnt/U/Dat_Seg/dat_4bands/train/labels/}"
 VAL_IMG="${VAL_IMG:-/mnt/U/Dat_Seg/dat_4bands/val/images/}"
@@ -14,7 +14,7 @@ VAL_MASK="${VAL_MASK:-/mnt/U/Dat_Seg/dat_4bands/val/labels/}"
 
 # 训练超参（可通过环境变量覆盖）
 IN_CH="${IN_CH:-4}"
-EPOCHS="${EPOCHS:-200}"
+EPOCHS="${EPOCHS:-400}"
 BS_DEFAULT="${BS:-4}"
 LR="${LR:-1e-3}"
 SCALE="${SCALE:-1.0}"
@@ -29,7 +29,7 @@ BS_DEEPLAB="${BS_DEEPLAB:-}"    # 例如 4
 BS_PSPNET="${BS_PSPNET:-}"      # 例如 4
 
 # 需要跑的模型列表（空格分隔，可通过环境变量 MODELS 覆盖）
-MODELS_STR="${MODELS:-unet unet_plusplus pspnet deeplabv3_plus hrnet_ocr_w48 ms_hrnet_w48}"
+MODELS_STR="${MODELS:-unet unet_plusplus pspnet deeplabv3_plus hrnet_ocr ms_hrnet}"
 IFS=' ' read -r -a MODELS <<< "$MODELS_STR"
 
 # 日志目录
@@ -58,7 +58,7 @@ for MODEL in "${MODELS[@]}"; do
     unet_plusplus)
       CUR_BS="${BS_UNETPP:-$BS_DEFAULT}"
       ;;
-    hrnet_ocr_w48|ms_hrnet_w48)
+    hrnet_ocr|ms_hrnet)
       CUR_BS="${BS_HRNET:-$BS_DEFAULT}"
       ;;
     deeplabv3_plus)
