@@ -183,20 +183,22 @@ def train_net(net,
                 imgs = imgs.to(device=device, dtype=torch.float32)
                 true_masks = true_masks.to(device=device, dtype=torch.float32)
 
-                # 前向传播
-                if use_deep_supervision and net.training:
-                    masks_pred, aux_pred = net(imgs)
-                    
-                    # 主损失
-                    main_loss = criterion(masks_pred, true_masks)
-                    
-                    # 辅助损失（权重0.4）
-                    aux_loss = aux_criterion(aux_pred, true_masks)
-                    
-                    loss = main_loss + 0.4 * aux_loss
+                # 前向传播（兼容无 aux_pred 的模型）
+                outputs = net(imgs)
+                aux_pred = None
+                if isinstance(outputs, (tuple, list)):
+                    masks_pred = outputs[0]
+                    if len(outputs) > 1:
+                        aux_pred = outputs[1]
                 else:
-                    masks_pred = net(imgs)
-                    loss = criterion(masks_pred, true_masks)
+                    masks_pred = outputs
+
+                # 计算损失
+                main_loss = criterion(masks_pred, true_masks)
+                loss = main_loss
+                if use_deep_supervision and (aux_pred is not None):
+                    aux_loss = aux_criterion(aux_pred, true_masks)
+                    loss = main_loss + 0.4 * aux_loss
 
                 epoch_loss += loss.item()
                 writer.add_scalar('Loss/train', loss.item(), global_step)
@@ -280,7 +282,7 @@ def get_args():
                        help='Directory of validation masks')
     parser.add_argument('-e', '--epochs', type=int, default=400,
                        help='Number of epochs')
-    parser.add_argument('-b', '--batch-size', type=int, default=8,
+    parser.add_argument('-b', '--batch-size', type=int, default=4,
                        help='Batch size')
     parser.add_argument('-l', '--learning-rate', type=float, default=1e-3,
                        help='Learning rate')
