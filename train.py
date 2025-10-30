@@ -46,7 +46,40 @@ class DiceLoss(nn.Module):
         
         return 1 - dice
 
-
+class BoundaryAwareLoss(nn.Module):
+    """
+    边界感知损失
+    用于 MSBR 模块的辅助监督
+    """
+    def __init__(self, weight=0.5):
+        super(BoundaryAwareLoss, self).__init__()
+        self.weight = weight
+        self.bce = nn.BCELoss()
+        
+        # Laplacian 算子提取边界
+        laplacian_kernel = torch.tensor([
+            [-1, -1, -1],
+            [-1,  8, -1],
+            [-1, -1, -1]
+        ], dtype=torch.float32).view(1, 1, 3, 3)
+        self.register_buffer('laplacian_kernel', laplacian_kernel)
+    
+    def extract_boundary(self, mask):
+        """从 mask 提取边界"""
+        boundary = F.conv2d(mask, self.laplacian_kernel, padding=1)
+        boundary = (boundary > 0).float()
+        return boundary
+    
+    def forward(self, boundary_pred, gt_mask):
+        """
+        Args:
+            boundary_pred: [B, 1, H, W] 预测的边界图
+            gt_mask: [B, 1, H, W] GT mask
+        """
+        gt_boundary = self.extract_boundary(gt_mask)
+        loss = self.bce(boundary_pred, gt_boundary)
+        return self.weight * loss
+    
 class BoundaryLoss(nn.Module):
     """边界损失 - 增强建筑物边缘"""
     def __init__(self):
@@ -154,6 +187,9 @@ def train_net(net,
     # 辅助损失（用于深度监督）
     aux_criterion = nn.BCEWithLogitsLoss()
 
+    # MSBR 边界损失
+    boundary_criterion = BoundaryAwareLoss(weight=0.5)
+
     # AdamW优化器（比RMSprop更适合HRNet）
     optimizer = optim.AdamW(net.parameters(), lr=lr, weight_decay=0.01)
     
@@ -172,8 +208,9 @@ def train_net(net,
         net.train()
         epoch_loss = 0
         
-        with tqdm(total=n_train, desc=f'Epoch {epoch + 1}/{epochs}', unit='img', disable=False) as pbar:
-            for batch in train_loader:
+        with tqdm(total=n_train, desc=f'Epoch {epoch + 1}/{epochs}', unit='img', disable=True) as pbar:
+            logging.info(f'Epoch {epoch + 1}/{epochs}')
+            for batch in train_loader: 
                 imgs = batch['image']
                 true_masks = batch['mask']
                 
@@ -185,13 +222,25 @@ def train_net(net,
 
                 # 前向传播（兼容无 aux_pred 的模型）
                 outputs = net(imgs)
-                aux_pred = None
-                if isinstance(outputs, (tuple, list)):
-                    masks_pred = outputs[0]
-                    if len(outputs) > 1:
-                        aux_pred = outputs[1]
+                if net_name == 'ms_hrnet':
+                    # MS-HRNet: (main_pred, aux_pred, boundary_map, spectral_weights)
+                    if isinstance(outputs, tuple) and len(outputs) == 4:
+                        masks_pred, aux_pred, boundary_map, spectral_weights = outputs
+                    else:
+                        masks_pred = outputs
+                        aux_pred = None
+                        boundary_map = None
+                        spectral_weights = None
                 else:
-                    masks_pred = outputs
+                    # 其他模型
+                    if isinstance(outputs, (tuple, list)):
+                        masks_pred = outputs[0]
+                        aux_pred = outputs[1] if len(outputs) > 1 else None
+                    else:
+                        masks_pred = outputs
+                        aux_pred = None
+                    boundary_map = None
+                    spectral_weights = None
 
                 # 计算损失
                 main_loss = criterion(masks_pred, true_masks)
@@ -199,6 +248,11 @@ def train_net(net,
                 if use_deep_supervision and (aux_pred is not None):
                     aux_loss = aux_criterion(aux_pred, true_masks)
                     loss = main_loss + 0.4 * aux_loss
+
+                    # MSBR 边界损失（仅 MS-HRNet）
+                if boundary_map is not None:
+                    boundary_loss = boundary_criterion(boundary_map, true_masks)
+                    loss = loss + boundary_loss
 
                 epoch_loss += loss.item()
                 writer.add_scalar('Loss/train', loss.item(), global_step)
@@ -248,6 +302,18 @@ def train_net(net,
                     writer.add_images('masks/true', true_masks[:4], global_step)
                     writer.add_images('masks/pred', 
                                     torch.sigmoid(masks_pred[:4]) > 0.5, global_step)
+                    # ==================== 边界可视化 ====================
+                    if boundary_map is not None:
+                        writer.add_images('boundary/pred', boundary_map[:4], global_step)
+                    # ==================== 光谱权重可视化 ====================
+                    if spectral_weights is not None:
+                        # spectral_weights: [B, 4, 1, 1]
+                        # 可视化每个波段的平均权重
+                        mean_weights = spectral_weights.mean(dim=0).squeeze()  # [4]
+                        band_names = ['Red', 'Green', 'Blue', 'NIR']
+                        for i, name in enumerate(band_names):
+                            writer.add_scalar(f'SpectralWeights/{name}', 
+                                            mean_weights[i].item(), global_step)
 
         # 每个epoch结束后更新学习率
         scheduler.step()
@@ -315,7 +381,7 @@ if __name__ == '__main__':
     logging.info(f'Using device {device}')
 
     # 导入模型
-    from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNetOCR, MSHRNetOCR
+    from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNetOCR
     
     if args.model == 'unet':
         net = UNet(in_channels=args.in_ch, num_classes=1)
@@ -326,7 +392,7 @@ if __name__ == '__main__':
     elif args.model == 'deeplabv3_plus':
         net = DeepLabV3Plus(in_channels=args.in_ch, num_classes=1)
     elif args.model == 'hrnet_ocr':
-        net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
+        net = HRNet(in_channels=args.in_ch, num_classes=1, base_channels=48)
     elif args.model == 'ms_hrnet':
         net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     else:

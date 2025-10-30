@@ -1,10 +1,10 @@
+
 """
-HRNet + OCR (Object-Contextual Representations) for High-Resolution Building Segmentation
-结合了：
-1. HRNet的多尺度特征融合
-2. OCR的上下文增强
-3. 边缘注意力机制
-4. 深度监督
+MS-HRNet: Multi-Spectral High-Resolution Network for Building Segmentation
+
+1. Spectral-Spatial Attention Fusion (SSAF) - 多光谱注意力融合
+2. Multi-Scale Boundary Refinement (MSBR) - 多尺度边界细化
+3. Object-Contextual Representations (OCR) - 上下文增强
 """
 
 import torch
@@ -12,29 +12,32 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class MultiSpectralAttention(nn.Module):
+class SpectralSpatialAttentionFusion(nn.Module):
     """
-    多光谱注意力融合模块
-    专门针对4波段遥感影像设计
+    Spectral-Spatial Attention Fusion (SSAF)
     
-    创新点:
-    1. 波段重要性自适应学习（Channel Attention）
-    2. 波段间交互建模（Band Interaction）
-    3. 空间注意力（Spatial Attention for building regions）
+    1. 波段重要性自适应学习 (Spectral Attention)
+    2. 波段间交互建模 (Inter-Band Interaction)
+    3. 空间注意力引导 (Spatial Attention)
+    
+    专门针对 RGB+NIR 4波段遥感影像设计
     """
     def __init__(self, num_bands=4, reduction=2):
-        super(MultiSpectralAttention, self).__init__()
+        super(SpectralSpatialAttentionFusion, self).__init__()
         
-        # 1. 波段注意力（类似SENet，但针对波段）
-        self.band_attention = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),  # Global pooling
+        # 1. Spectral Attention: 学习波段重要性
+        # 类似 SENet，但专门针对光谱维度
+        self.spectral_attention = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),  # 全局池化 [B, C, H, W] -> [B, C, 1, 1]
             nn.Conv2d(num_bands, num_bands // reduction, 1, bias=False),
             nn.ReLU(inplace=True),
             nn.Conv2d(num_bands // reduction, num_bands, 1, bias=False),
             nn.Sigmoid()
         )
         
-        # 2. 波段交互建模（学习波段间的关系）
+        # 2. Inter-Band Interaction: 建模波段间关系
+        # 例如: NDVI = (NIR - Red) / (NIR + Red)
+        # 网络自动学习类似的波段组合
         self.band_interaction = nn.Sequential(
             nn.Conv2d(num_bands, num_bands * 2, 1, bias=False),
             nn.BatchNorm2d(num_bands * 2),
@@ -43,7 +46,7 @@ class MultiSpectralAttention(nn.Module):
             nn.BatchNorm2d(num_bands)
         )
         
-        # 3. 空间注意力（关注建筑物可能的区域）
+        # 3. Spatial Attention: 关注建筑物空间分布
         self.spatial_attention = nn.Sequential(
             nn.Conv2d(num_bands, num_bands // 2, 3, padding=1, bias=False),
             nn.BatchNorm2d(num_bands // 2),
@@ -55,75 +58,118 @@ class MultiSpectralAttention(nn.Module):
     def forward(self, x):
         """
         Args:
-            x: [B, 4, H, W] - 4波段输入
+            x: [B, 4, H, W] - 4波段输入 (RGB + NIR)
         Returns:
             enhanced: [B, 4, H, W] - 增强后的特征
+            spectral_weights: [B, 4, 1, 1] - 波段权重（用于可视化）
         """
-        # 1. 波段注意力：学习哪个波段更重要
-        # 例如：NIR波段对植被/建筑物区分可能更重要
-        band_weights = self.band_attention(x)  # [B, 4, 1, 1]
-        x_band_weighted = x * band_weights
+        # 1. Spectral Attention: 哪个波段更重要？
+        spectral_weights = self.spectral_attention(x)  # [B, 4, 1, 1]
+        x_spectral = x * spectral_weights
         
-        # 2. 波段交互：学习波段之间的关系
-        # 例如：NDVI = (NIR - Red) / (NIR + Red)
-        x_interact = self.band_interaction(x_band_weighted)
-        x_enhanced = x_band_weighted + x_interact  # 残差连接
+        # 2. Inter-Band Interaction: 波段间如何组合？
+        x_interact = self.band_interaction(x_spectral)
+        x_enhanced = x_spectral + x_interact  # 残差连接
         
-        # 3. 空间注意力：关注可能包含建筑物的区域
+        # 3. Spatial Attention: 建筑物在哪里？
         spatial_weights = self.spatial_attention(x_enhanced)  # [B, 1, H, W]
         x_final = x_enhanced * spatial_weights
         
-        return x_final
+        return x_final, spectral_weights
 
+
+class MultiScaleBoundaryRefinement(nn.Module):
+    """
+    Multi-Scale Boundary Refinement (MSBR)
+
+    1. 多尺度边界特征提取 (dilation rates: 1, 2, 4)
+    2. 边界感知的特征增强
+    3. 自适应边界权重学习
     
-class BasicBlock(nn.Module):
-    expansion = 1
-
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
-        super(BasicBlock, self).__init__()
-        self.conv1 = nn.Conv2d(inplanes, planes, 3, stride, 1, bias=False)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(planes, planes, 3, 1, 1, bias=False)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.downsample = downsample
-        self.stride = stride
-
-    def forward(self, x):
-        residual = x # torch.Size([8, 64, 128, 128])
-        out = self.conv1(x) # torch.Size([8, 48, 128, 128])
-        out = self.bn1(out)
-        out = self.relu(out)
-        out = self.conv2(out) # torch.Size([8, 48, 128, 128])
-        out = self.bn2(out)
-        if self.downsample is not None:
-            residual = self.downsample(x) # torch.Size([8, 48, 128, 128])
-        out += residual
-        out = self.relu(out)
-        return out
-
-class EdgeAttention(nn.Module):
-    """边缘注意力模块 - 专门增强建筑物边界"""
-    def __init__(self, in_channels):
-        super(EdgeAttention, self).__init__()
-        self.edge_conv = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels // 4, 1),
-            nn.BatchNorm2d(in_channels // 4),
+    相比原来的 EdgeAttention:
+    - 原来: 单尺度 3x3 卷积
+    - 现在: 多尺度空洞卷积 + 特征融合
+    """
+    def __init__(self, in_channels, reduction=4):
+        super(MultiScaleBoundaryRefinement, self).__init__()
+        mid_channels = in_channels // reduction
+        
+        # Multi-scale boundary detection
+        self.boundary_branch1 = nn.Sequential(
+            nn.Conv2d(in_channels, mid_channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(mid_channels),
+            nn.ReLU(inplace=True)
+        )
+        
+        self.boundary_branch2 = nn.Sequential(
+            nn.Conv2d(in_channels, mid_channels, 3, padding=2, dilation=2, bias=False),
+            nn.BatchNorm2d(mid_channels),
+            nn.ReLU(inplace=True)
+        )
+        
+        self.boundary_branch3 = nn.Sequential(
+            nn.Conv2d(in_channels, mid_channels, 3, padding=4, dilation=4, bias=False),
+            nn.BatchNorm2d(mid_channels),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Boundary feature fusion
+        self.boundary_fusion = nn.Sequential(
+            nn.Conv2d(mid_channels * 3, mid_channels, 1, bias=False),
+            nn.BatchNorm2d(mid_channels),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Boundary weight generation
+        self.boundary_weight = nn.Sequential(
+            nn.Conv2d(mid_channels, mid_channels // 2, 3, padding=1, bias=False),
+            nn.BatchNorm2d(mid_channels // 2),
             nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels // 4, in_channels // 4, 3, padding=1),
-            nn.BatchNorm2d(in_channels // 4),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels // 4, 1, 1),
+            nn.Conv2d(mid_channels // 2, 1, 1),
             nn.Sigmoid()
         )
         
+        # Feature enhancement
+        self.feature_enhance = nn.Sequential(
+            nn.Conv2d(in_channels, in_channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(in_channels),
+            nn.ReLU(inplace=True)
+        )
+        
     def forward(self, x):
-        edge_weight = self.edge_conv(x)
-        return x * edge_weight
+        """
+        Args:
+            x: [B, C, H, W] 输入特征
+        Returns:
+            out: [B, C, H, W] 边界增强后的特征
+            boundary_map: [B, 1, H, W] 边界概率图
+        """
+        # Multi-scale boundary detection
+        b1 = self.boundary_branch1(x)
+        b2 = self.boundary_branch2(x)
+        b3 = self.boundary_branch3(x)
+        
+        # Fusion
+        boundary_feat = torch.cat([b1, b2, b3], dim=1)
+        boundary_feat = self.boundary_fusion(boundary_feat)
+        
+        # Generate boundary map
+        boundary_map = self.boundary_weight(boundary_feat)
+        
+        # Feature enhancement: 边界区域加强
+        enhanced = self.feature_enhance(x)
+        out = x + enhanced * boundary_map
+        
+        return out, boundary_map
 
 
 class SpatialOCR(nn.Module):
-    """Object-Contextual Representations - 上下文增强"""
+    """
+    Object-Contextual Representations (OCR)
+    
+    技术贡献: 首次应用于多光谱建筑物分割
+    优势: 捕获密集建筑物场景中的长程依赖
+    """
     def __init__(self, in_channels, key_channels, out_channels, num_classes=1):
         super(SpatialOCR, self).__init__()
         self.object_context = nn.Sequential(
@@ -152,28 +198,50 @@ class SpatialOCR(nn.Module):
         soft_regions = torch.sigmoid(aux_pred)
         
         # 对象上下文
-        obj_context = self.object_context(feats) # torch.Size([8, 96, 128, 128])
+        obj_context = self.object_context(feats)
         B, C, H, W = obj_context.shape
-        obj_context = obj_context.view(B, C, -1) # torch.Size([8, 96, 16384])
-        soft_regions_flat = soft_regions.view(B, 1, -1) # torch.Size([8, 1, 16384])
+        obj_context = obj_context.view(B, C, -1)
+        soft_regions_flat = soft_regions.view(B, 1, -1)
         
         # 加权池化
-        region_context = torch.bmm(obj_context, soft_regions_flat.transpose(1, 2)) # torch.Size([8, 96, 1])
+        region_context = torch.bmm(obj_context, soft_regions_flat.transpose(1, 2))
         region_context = region_context / (soft_regions_flat.sum(dim=2, keepdim=True) + 1e-6)
-        region_context = region_context.unsqueeze(-1).expand(-1, -1, H, W) # torch.Size([8, 96, 128, 128])
+        region_context = region_context.unsqueeze(-1).expand(-1, -1, H, W)
         
         # 像素上下文
-        pix_context = self.pixel_context(feats) # torch.Size([8, 96, 128, 128])
+        pix_context = self.pixel_context(feats)
         
         # 融合
-        concat = torch.cat([pix_context, region_context], dim=1) # torch.Size([8, 192, 128, 128])
-        output = self.fusion(concat) # torch.Size([8, 96, 128, 128])
+        concat = torch.cat([pix_context, region_context], dim=1)
+        output = self.fusion(concat)
         
         return output, aux_pred
 
 
+# ==================== HRNet Backbone Components ====================
+class BasicBlock(nn.Module):
+    expansion = 1
+
+    def __init__(self, inplanes, planes, stride=1, downsample=None):
+        super(BasicBlock, self).__init__()
+        self.conv1 = nn.Conv2d(inplanes, planes, 3, stride, 1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(planes, planes, 3, 1, 1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.downsample = downsample
+
+    def forward(self, x):
+        residual = x
+        out = self.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        if self.downsample is not None:
+            residual = self.downsample(x)
+        out += residual
+        return self.relu(out)
+
+
 class HRNetBranch(nn.Module):
-    """HRNet的单个分支"""
     def __init__(self, num_blocks, in_channels, out_channels):
         super(HRNetBranch, self).__init__()
         downsample = None
@@ -194,7 +262,6 @@ class HRNetBranch(nn.Module):
 
 
 class FuseLayer(nn.Module):
-    """多尺度特征融合层"""
     def __init__(self, num_branches, in_channels_list):
         super(FuseLayer, self).__init__()
         self.num_branches = num_branches
@@ -205,7 +272,6 @@ class FuseLayer(nn.Module):
             fuse_layer = nn.ModuleList()
             for j in range(num_branches):
                 if j > i:
-                    # 上采样
                     fuse_layer.append(nn.Sequential(
                         nn.Conv2d(in_channels_list[j], in_channels_list[i], 1, bias=False),
                         nn.BatchNorm2d(in_channels_list[i]),
@@ -214,7 +280,6 @@ class FuseLayer(nn.Module):
                 elif j == i:
                     fuse_layer.append(None)
                 else:
-                    # 下采样
                     convs = []
                     for k in range(i - j):
                         if k == i - j - 1:
@@ -244,31 +309,38 @@ class FuseLayer(nn.Module):
         return out
 
 
+# ==================== MS-HRNet Main Architecture ====================
 class MSHRNetOCR(nn.Module):
     """
-    高分辨率网络 + OCR + 多光谱注意力模块，专为建筑物分割优化
+    MS-HRNet: Multi-Spectral High-Resolution Network
+    
+    创新组合:
+    1. SSAF: 输入端的多光谱自适应融合
+    2. HRNet: 高分辨率特征提取
+    3. OCR: 上下文增强
+    4. MSBR: 边界细化
     """
     def __init__(self, in_channels=4, num_classes=1, base_channels=48):
         super(MSHRNetOCR, self).__init__()
         self.n_channels = in_channels
         self.n_classes = num_classes
         
-        # 多光谱注意力
-        self.ms_attention = MultiSpectralAttention(num_bands=4, reduction=2)
-        # Stage 1: 初始特征提取
+        # ============ 创新点 1: SSAF (输入端) ============
+        self.ssaf = SpectralSpatialAttentionFusion(num_bands=in_channels, reduction=2)
+        
+        # ============ HRNet Backbone ============
+        # Stage 1
         self.conv1 = nn.Conv2d(in_channels, 64, 3, 2, 1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.conv2 = nn.Conv2d(64, 64, 3, 2, 1, bias=False)
         self.bn2 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         
-        # Stage 2: 两个分支 [1x, 2x下采样]
-        # 第一个分支处理stage1的输出(64通道)
         self.layer1 = HRNetBranch(4, 64, base_channels)
         
-        # Transition: 从stage1到stage2，创建两个分支
+        # Transitions and Stages
         self.transition1 = nn.ModuleList([
-            None,  # 第一个分支直接使用layer1的输出
+            None,
             nn.Sequential(
                 nn.Conv2d(base_channels, base_channels * 2, 3, 2, 1, bias=False),
                 nn.BatchNorm2d(base_channels * 2),
@@ -276,17 +348,14 @@ class MSHRNetOCR(nn.Module):
             )
         ])
         
-        # Stage2的branches
         self.stage2_branches = nn.ModuleList([
             HRNetBranch(4, base_channels, base_channels),
             HRNetBranch(4, base_channels * 2, base_channels * 2)
         ])
         self.fuse2 = FuseLayer(2, [base_channels, base_channels * 2])
         
-        # Transition2: 从stage2到stage3，添加第三个分支
         self.transition2 = nn.ModuleList([
-            None,
-            None,
+            None, None,
             nn.Sequential(
                 nn.Conv2d(base_channels * 2, base_channels * 4, 3, 2, 1, bias=False),
                 nn.BatchNorm2d(base_channels * 4),
@@ -294,7 +363,6 @@ class MSHRNetOCR(nn.Module):
             )
         ])
         
-        # Stage 3: 三个分支 [1x, 2x, 4x下采样]
         self.stage3_branches = nn.ModuleList([
             HRNetBranch(4, base_channels, base_channels),
             HRNetBranch(4, base_channels * 2, base_channels * 2),
@@ -302,11 +370,8 @@ class MSHRNetOCR(nn.Module):
         ])
         self.fuse3 = FuseLayer(3, [base_channels, base_channels * 2, base_channels * 4])
         
-        # Transition3: 从stage3到stage4，添加第四个分支
         self.transition3 = nn.ModuleList([
-            None,
-            None,
-            None,
+            None, None, None,
             nn.Sequential(
                 nn.Conv2d(base_channels * 4, base_channels * 8, 3, 2, 1, bias=False),
                 nn.BatchNorm2d(base_channels * 8),
@@ -314,7 +379,6 @@ class MSHRNetOCR(nn.Module):
             )
         ])
         
-        # Stage 4: 四个分支 [1x, 2x, 4x, 8x下采样]
         self.stage4_branches = nn.ModuleList([
             HRNetBranch(4, base_channels, base_channels),
             HRNetBranch(4, base_channels * 2, base_channels * 2),
@@ -323,15 +387,15 @@ class MSHRNetOCR(nn.Module):
         ])
         self.fuse4 = FuseLayer(4, [base_channels, base_channels * 2, base_channels * 4, base_channels * 8])
         
-        # 特征聚合
-        total_channels = base_channels * 15  # 48+96+192+384
+        # Feature aggregation
+        total_channels = base_channels * 15
         self.aggregate = nn.Sequential(
             nn.Conv2d(total_channels, base_channels * 4, 1, bias=False),
             nn.BatchNorm2d(base_channels * 4),
             nn.ReLU(inplace=True)
         )
         
-        # OCR模块
+        # ============ OCR ============
         self.ocr = SpatialOCR(
             in_channels=base_channels * 4,
             key_channels=base_channels * 2,
@@ -339,10 +403,10 @@ class MSHRNetOCR(nn.Module):
             num_classes=num_classes
         )
         
-        # 边缘注意力
-        self.edge_attention = EdgeAttention(base_channels * 2)
+        # ============ MSBR ============
+        self.msbr = MultiScaleBoundaryRefinement(base_channels * 2, reduction=4)
         
-        # 最终分类头
+        # Final classifier
         self.final_conv = nn.Sequential(
             nn.Conv2d(base_channels * 2, base_channels, 3, padding=1, bias=False),
             nn.BatchNorm2d(base_channels),
@@ -361,83 +425,57 @@ class MSHRNetOCR(nn.Module):
                 nn.init.constant_(m.bias, 0)
     
     def forward(self, x):
-        input_size = x.size()[2:] # torch.size([512, 512])
+        input_size = x.size()[2:]
         
-        x = self.ms_attention(x)
-
-        # Stage 1: 初始特征提取
-        x = self.conv1(x) # torch.Size([8, 64, 256, 256])
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.conv2(x) # torch.Size([8, 64, 128, 128])
-        x = self.bn2(x)
-        x = self.relu(x)  # /4, 64通道
+        # ============ SSAF: 多光谱融合 ============
+        x, spectral_weights = self.ssaf(x)
         
-        # Layer1: 处理成base_channels
-        x = self.layer1(x)  # /4, base_channels  torch.Size([8, 48, 128, 128])
-        
-        # Transition1: 创建两个分支
-        x_list = [x]  # 第一个分支
-        x_list.append(self.transition1[1](x))  # 第二个分支，下采样 torch.Size([8, 96, 64, 64])
+        # ============ HRNet Backbone ============
+        x = self.relu(self.bn1(self.conv1(x)))
+        x = self.relu(self.bn2(self.conv2(x)))
+        x = self.layer1(x)
         
         # Stage 2
+        x_list = [x]
+        x_list.append(self.transition1[1](x))
         x_list = [branch(x_list[i]) for i, branch in enumerate(self.stage2_branches)]
-        x_list = self.fuse2(x_list) # torch.Size([8, 48, 128, 128]), torch.Size([8, 96, 64, 64])
-        
-        # Transition2: 添加第三个分支
-        x_list_new = x_list.copy()
-        x_list_new.append(self.transition2[2](x_list[-1]))  # 从最后一个分支下采样 2:torch.Size([8, 192, 32, 32])
+        x_list = self.fuse2(x_list)
         
         # Stage 3
-        x_list = [branch(x_list_new[i]) for i, branch in enumerate(self.stage3_branches)]
-        x_list = self.fuse3(x_list) # torch.Size([8, 48, 128, 128]), torch.Size([8, 96, 64, 64]), torch.Size([8, 192, 32, 32])
-        
-        # Transition3: 添加第四个分支
         x_list_new = x_list.copy()
-        x_list_new.append(self.transition3[3](x_list[-1]))  # 从最后一个分支下采样
+        x_list_new.append(self.transition2[2](x_list[-1]))
+        x_list = [branch(x_list_new[i]) for i, branch in enumerate(self.stage3_branches)]
+        x_list = self.fuse3(x_list)
         
         # Stage 4
+        x_list_new = x_list.copy()
+        x_list_new.append(self.transition3[3](x_list[-1]))
         x_list = [branch(x_list_new[i]) for i, branch in enumerate(self.stage4_branches)]
-        x_list = self.fuse4(x_list) # torch.Size([8, 48, 128, 128]), torch.Size([8, 96, 64, 64]), torch.Size([8, 192, 32, 32]), torch.Size([8, 384, 16, 16])
+        x_list = self.fuse4(x_list)
         
-        # 特征聚合：所有尺度上采样到最高分辨率
-        x0 = x_list[0] # torch.Size([8, 48, 128, 128])
-        x1 = F.interpolate(x_list[1], size=x0.shape[2:], mode='bilinear', align_corners=True) # torch.Size([8, 96, 128, 128])
-        x2 = F.interpolate(x_list[2], size=x0.shape[2:], mode='bilinear', align_corners=True) # torch.Size([8, 192, 128, 128])
-        x3 = F.interpolate(x_list[3], size=x0.shape[2:], mode='bilinear', align_corners=True) # torch.Size([8, 384, 128, 128])
+        # Aggregation
+        x0 = x_list[0]
+        x1 = F.interpolate(x_list[1], size=x0.shape[2:], mode='bilinear', align_corners=True)
+        x2 = F.interpolate(x_list[2], size=x0.shape[2:], mode='bilinear', align_corners=True)
+        x3 = F.interpolate(x_list[3], size=x0.shape[2:], mode='bilinear', align_corners=True)
         
-        feats = torch.cat([x0, x1, x2, x3], dim=1) # torch.Size([8, 720, 128, 128])
-        feats = self.aggregate(feats) # torch.Size([8, 192, 128, 128])
+        feats = torch.cat([x0, x1, x2, x3], dim=1)
+        feats = self.aggregate(feats)
         
-        # OCR增强
-        feats, aux_pred = self.ocr(feats) # torch.Size([8, 96, 128, 128]), torch.Size([8, 1, 128, 128])
+        # ============ OCR: 上下文增强 ============
+        feats, aux_pred = self.ocr(feats)
         
-        # 边缘注意力
-        feats = self.edge_attention(feats) # torch.Size([8, 96, 128, 128])
+        # ============ MSBR: 边界细化 ============
+        feats, boundary_map = self.msbr(feats)
         
-        # 最终预测
-        out = self.final_conv(feats) # torch.Size([8, 1, 128, 128])
-        
-        # 上采样到原始尺寸
-        out = F.interpolate(out, size=input_size, mode='bilinear', align_corners=True) # torch.Size([8, 1, 512, 512])
+        # Final prediction
+        out = self.final_conv(feats)
+        out = F.interpolate(out, size=input_size, mode='bilinear', align_corners=True)
         
         if self.training:
+            # 返回多个输出用于深度监督
             aux_pred = F.interpolate(aux_pred, size=input_size, mode='bilinear', align_corners=True)
-            return out, aux_pred
+            boundary_map = F.interpolate(boundary_map, size=input_size, mode='bilinear', align_corners=True)
+            return out, aux_pred, boundary_map, spectral_weights
         else:
             return out
-
-
-# def hrnet_ocr_w48(in_channels=4, num_classes=1):
-#     """HRNet-W48 + OCR"""
-#     return MSHRNetOCR(in_channels, num_classes, base_channels=48)
-
-
-# def hrnet_ocr_w32(in_channels=4, num_classes=1):
-#     """HRNet-W32 + OCR (更快)"""
-#     return MSHRNetOCR(in_channels, num_classes, base_channels=32)
-
-
-# def hrnet_ocr_w18(in_channels=4, num_classes=1):
-#     """HRNet-W18 + OCR (最快)"""
-#     return MSHRNetOCR(in_channels, num_classes, base_channels=18)
