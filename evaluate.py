@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import binary_dilation, binary_erosion
 import json
 
-from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNetOCR, MSHRNetOCR
+from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNetOCR
 from predict import read_image_any, normalize_image
 
 
@@ -315,10 +315,10 @@ def plot_metrics_distribution(all_metrics, output_dir):
 
 def main():
     parser = argparse.ArgumentParser(description='Evaluate HRNet-OCR on test dataset')
-    parser.add_argument('--model', '-m', default='checkpoints/BEST_mshrnet_w48_4bands.pth', help='模型权重路径')
-    parser.add_argument('--img-dir', default='/mnt/U/Dat_Seg/4bands/test/images/', help='测试图像目录')
-    parser.add_argument('--gt-dir', default='/mnt/U/Dat_Seg/4bands/test/labels/', help='真值mask目录')
-    parser.add_argument('--model-type', default='ms_hrnet_w48',
+    parser.add_argument('--model', '-m', default='checkpoints/BEST_unet_dat_4bands.pth', help='模型权重路径')
+    parser.add_argument('--img-dir', default='/mnt/U/Dat_Seg/dat_4bands/test/images/', help='测试图像目录')
+    parser.add_argument('--gt-dir', default='/mnt/U/Dat_Seg/dat_4bands/test/labels/', help='真值mask目录')
+    parser.add_argument('--model-type', default='unet',
                        choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 'hrnet_ocr_w48', 'ms_hrnet_w48'])
     parser.add_argument('--in-ch', type=int, default=4)
     parser.add_argument('--threshold', type=float, default=0.5)
@@ -347,7 +347,7 @@ def main():
     elif args.model_type == 'deeplabv3_plus':
         net = DeepLabV3Plus(in_channels=args.in_ch, num_classes=1)
     elif args.model_type == 'hrnet_ocr_w48':
-        net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
+        net = HRNet(in_channels=args.in_ch, num_classes=1, base_channels=48)
     elif args.model_type == 'ms_hrnet_w48':
         net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     else:

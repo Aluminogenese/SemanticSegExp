@@ -14,7 +14,7 @@ from PIL import Image
 from glob import glob
 import json
 
-from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNetOCR, MSHRNetOCR
+from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNetOCR
 
 
 def read_image_any(path):
@@ -205,7 +205,7 @@ def main():
     elif args.model_type == 'deeplabv3_plus':
         net = DeepLabV3Plus(in_channels=args.in_ch, num_classes=1)
     elif args.model_type == 'hrnet_ocr_w48':
-        net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
+        net = HRNet(in_channels=args.in_ch, num_classes=1, base_channels=48)
     elif args.model_type == 'ms_hrnet_w48':
         net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     else:
