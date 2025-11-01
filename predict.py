@@ -14,7 +14,7 @@ from PIL import Image
 from glob import glob
 import json
 
-from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNetOCR
+from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR, MSHRNetAblation
 
 
 def read_image_any(path):
@@ -179,7 +179,9 @@ def main():
     parser.add_argument('--input', '-i', nargs='+', default=['/mnt/U/Dat_Seg/4bands/test/images/*.tif'], help='输入图像路径')
     parser.add_argument('--output', '-o',default='predict_results', help='输出目录或文件路径')
     parser.add_argument('--model-type', default='unet',
-                       choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 'hrnet_ocr_w48', 'ms_hrnet_w48'],
+                       choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 
+                               'hrnet', 'hrnet_ocr', 'ms_hrnet',
+                               'ms_hrnet_no_ssaf', 'ms_hrnet_no_msbr'],
                        help='模型类型')
     parser.add_argument('--in-ch', type=int, default=4, help='输入通道数')
     parser.add_argument('--tta', action='store_true', help='启用TTA（8x变换）')
@@ -204,10 +206,18 @@ def main():
         net = PSPNet(in_channels=args.in_ch, num_classes=1)
     elif args.model_type == 'deeplabv3_plus':
         net = DeepLabV3Plus(in_channels=args.in_ch, num_classes=1)
-    elif args.model_type == 'hrnet_ocr_w48':
+    elif args.model_type == 'hrnet':
         net = HRNet(in_channels=args.in_ch, num_classes=1, base_channels=48)
+    elif args.model_type == 'hrnet_ocr':
+        net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     elif args.model_type == 'ms_hrnet_w48':
         net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
+    elif args.model_type == 'ms_hrnet_no_ssaf':
+        net = MSHRNetAblation(in_channels=args.in_ch, num_classes=1, base_channels=48,
+                             use_ssaf=False, use_msbr=True)
+    elif args.model_type == 'ms_hrnet_no_msbr':
+        net = MSHRNetAblation(in_channels=args.in_ch, num_classes=1, base_channels=48,
+                             use_ssaf=True, use_msbr=False)
     else:
         raise ValueError(f'Unknown model architecture: {args.model}')
     

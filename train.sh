@@ -29,7 +29,7 @@ BS_DEEPLAB="${BS_DEEPLAB:-}"    # 例如 4
 BS_PSPNET="${BS_PSPNET:-}"      # 例如 4
 
 # 需要跑的模型列表（空格分隔，可通过环境变量 MODELS 覆盖）
-MODELS_STR="${MODELS:-unet unet_plusplus pspnet deeplabv3_plus hrnet_ocr ms_hrnet}"
+MODELS_STR="${MODELS:-hrnet_ocr ms_hrnet_no_ssaf ms_hrnet_no_msbr pspnet}"
 IFS=' ' read -r -a MODELS <<< "$MODELS_STR"
 
 # 日志目录
@@ -78,7 +78,7 @@ for MODEL in "${MODELS[@]}"; do
     --val-img "$VAL_IMG" \
     --val-mask "$VAL_MASK" \
     -e "$EPOCHS" \
-    -b "$CUR_BS" \
+    -b "$BS_DEFAULT" \
     -l "$LR" \
     -s "$SCALE" \
     --model "$MODEL" \

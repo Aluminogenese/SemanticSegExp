@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import binary_dilation, binary_erosion
 import json
 
-from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNetOCR
+from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR, MSHRNetAblation
 from predict import read_image_any, normalize_image
 
 
@@ -315,11 +315,13 @@ def plot_metrics_distribution(all_metrics, output_dir):
 
 def main():
     parser = argparse.ArgumentParser(description='Evaluate HRNet-OCR on test dataset')
-    parser.add_argument('--model', '-m', default='checkpoints/BEST_unet_dat_4bands.pth', help='模型权重路径')
+    parser.add_argument('--model', '-m', default='checkpoints/BEST_ms_hrnet_dat_4bands.pth', help='模型权重路径')
     parser.add_argument('--img-dir', default='/mnt/U/Dat_Seg/dat_4bands/test/images/', help='测试图像目录')
     parser.add_argument('--gt-dir', default='/mnt/U/Dat_Seg/dat_4bands/test/labels/', help='真值mask目录')
-    parser.add_argument('--model-type', default='unet',
-                       choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 'hrnet_ocr_w48', 'ms_hrnet_w48'])
+    parser.add_argument('--model-type', default='ms_hrnet',
+                       choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 
+                               'hrnet', 'hrnet_ocr', 'ms_hrnet',
+                               'ms_hrnet_no_ssaf', 'ms_hrnet_no_msbr'])
     parser.add_argument('--in-ch', type=int, default=4)
     parser.add_argument('--threshold', type=float, default=0.5)
     parser.add_argument('--output-dir', default='evaluation_results')
@@ -346,10 +348,18 @@ def main():
         net = PSPNet(in_channels=args.in_ch, num_classes=1)
     elif args.model_type == 'deeplabv3_plus':
         net = DeepLabV3Plus(in_channels=args.in_ch, num_classes=1)
-    elif args.model_type == 'hrnet_ocr_w48':
+    elif args.model_type == 'hrnet':
         net = HRNet(in_channels=args.in_ch, num_classes=1, base_channels=48)
+    elif args.model_type == 'hrnet_ocr':
+        net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     elif args.model_type == 'ms_hrnet_w48':
         net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
+    elif args.model_type == 'ms_hrnet_no_ssaf':
+        net = MSHRNetAblation(in_channels=args.in_ch, num_classes=1, base_channels=48,
+                             use_ssaf=False, use_msbr=True)
+    elif args.model_type == 'ms_hrnet_no_msbr':
+        net = MSHRNetAblation(in_channels=args.in_ch, num_classes=1, base_channels=48,
+                             use_ssaf=True, use_msbr=False)
     else:
         raise ValueError(f'Unknown model architecture: {args.model}')
     
