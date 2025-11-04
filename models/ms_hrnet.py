@@ -22,20 +22,29 @@ class SpectralSpatialAttentionFusion(nn.Module):
     
     专门针对 RGB+NIR 4波段遥感影像设计
     """
-    def __init__(self, num_bands=4, reduction=2):
+    def __init__(self, num_bands=4, reduction=2, init_weight_range=(0.7, 0.9)):
         super(SpectralSpatialAttentionFusion, self).__init__()
-        
-        # 1. Spectral Attention: 学习波段重要性
-        # 类似 SENet，但专门针对光谱维度
+        self.num_bands = num_bands
+        self.init_weight_range = init_weight_range
+        mid_channels = max(num_bands // reduction, num_bands // 2)
+
         self.spectral_attention = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),  # 全局池化 [B, C, H, W] -> [B, C, 1, 1]
-            nn.Conv2d(num_bands, num_bands // reduction, 1, bias=False),
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(num_bands, mid_channels, 1, bias=True),  # 加bias
+            nn.LayerNorm([mid_channels, 1, 1]),  # 归一化
             nn.ReLU(inplace=True),
-            nn.Conv2d(num_bands // reduction, num_bands, 1, bias=False),
-            nn.Sigmoid()
+            nn.Dropout2d(0.1),
+            nn.Conv2d(mid_channels, num_bands, 1, bias=True),
         )
+        # self.spectral_attention = nn.Sequential(
+        #     nn.AdaptiveAvgPool2d(1),  # 全局池化 [B, C, H, W] -> [B, C, 1, 1]
+        #     nn.Conv2d(num_bands, num_bands // reduction, 1, bias=False),
+        #     nn.ReLU(inplace=True),
+        #     nn.Conv2d(num_bands // reduction, num_bands, 1, bias=False),
+        #     nn.Sigmoid()
+        # )
         
-        # 2. Inter-Band Interaction: 建模波段间关系
+        # Inter-Band Interaction: 建模波段间关系
         # 例如: NDVI = (NIR - Red) / (NIR + Red)
         # 网络自动学习类似的波段组合
         self.band_interaction = nn.Sequential(
@@ -45,8 +54,13 @@ class SpectralSpatialAttentionFusion(nn.Module):
             nn.Conv2d(num_bands * 2, num_bands, 1, bias=False),
             nn.BatchNorm2d(num_bands)
         )
-        
-        # 3. Spatial Attention: 关注建筑物空间分布
+
+        self.gate_conv = nn.Sequential(
+            nn.Conv2d(num_bands, num_bands, 1, bias=True),
+            nn.Sigmoid()
+        )
+
+        # Spatial Attention: 关注建筑物空间分布
         self.spatial_attention = nn.Sequential(
             nn.Conv2d(num_bands, num_bands // 2, 3, padding=1, bias=False),
             nn.BatchNorm2d(num_bands // 2),
@@ -54,7 +68,20 @@ class SpectralSpatialAttentionFusion(nn.Module):
             nn.Conv2d(num_bands // 2, 1, 3, padding=1, bias=False),
             nn.Sigmoid()
         )
-    
+
+        self.temperature = nn.Parameter(torch.ones(1) * 1.0)
+        self._init_weights()
+
+    def _init_weights(self):
+        for name, m in self.named_modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.xavier_uniform_(m.weight)
+                if 'spectral_attention' in name and m.bias is not None:
+                    nn.init.constant_(m.bias, 1.4)
+            elif isinstance(m, (nn.BatchNorm2d, nn.LayerNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
     def forward(self, x):
         """
         Args:
@@ -64,13 +91,25 @@ class SpectralSpatialAttentionFusion(nn.Module):
             spectral_weights: [B, 4, 1, 1] - 波段权重（用于可视化）
         """
         # 1. Spectral Attention: 哪个波段更重要？
+        spectral_logits = self.spectral_attention(x)
+        spectral_weights = torch.sigmoid(spectral_logits / self.temperature.abs().clamp(min=0.5))
+        
+        if self.training:
+            weight_std = spectral_weights.std()
+            if weight_std < 0.05:
+                noise = torch.randn_like(spectral_weights) * 0.15
+                spectral_logits_perturbed = spectral_logits + noise
+                spectral_weights = torch.sigmoid(spectral_logits_perturbed / self.temperature.abs().clamp(min=0.5))
         spectral_weights = self.spectral_attention(x)  # [B, 4, 1, 1]
+
         x_spectral = x * spectral_weights
         
         # 2. Inter-Band Interaction: 波段间如何组合？
         x_interact = self.band_interaction(x_spectral)
-        x_enhanced = x_spectral + x_interact  # 残差连接
-        
+        # x_enhanced = x_spectral + x_interact  # 残差连接
+        gate = self.gate_conv(x_spectral)
+        x_enhanced = x_spectral + gate * x_interact
+
         # 3. Spatial Attention: 建筑物在哪里？
         spatial_weights = self.spatial_attention(x_enhanced)  # [B, 1, H, W]
         x_final = x_enhanced * spatial_weights
@@ -325,8 +364,12 @@ class MSHRNetOCR(nn.Module):
         self.n_channels = in_channels
         self.n_classes = num_classes
         
-        # ============ 创新点 1: SSAF (输入端) ============
-        self.ssaf = SpectralSpatialAttentionFusion(num_bands=in_channels, reduction=2)
+        # ============ SSAF (输入端) ============
+        self.ssaf = SpectralSpatialAttentionFusion(
+            num_bands=in_channels, 
+            reduction=2,
+            init_weight_range=(0.7, 0.9)
+        )
         
         # ============ HRNet Backbone ============
         # Stage 1
@@ -479,3 +522,34 @@ class MSHRNetOCR(nn.Module):
             return out, aux_pred, boundary_map, spectral_weights
         else:
             return out
+        
+if __name__ == '__main__':
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    # 创建模型
+    model = MSHRNetOCR(in_channels=4, num_classes=1, base_channels=48)
+    model.to(device)
+    model.train()
+    
+    # 测试输入
+    x = torch.randn(2, 4, 512, 512).to(device)
+    
+    print("Testing MSHRNetOCRImproved...")
+    print(f"Input shape: {x.shape}")
+    
+    # 前向传播
+    out, aux_pred, boundary_map, spectral_weights = model(x)
+    
+    print(f"Output shape: {out.shape}")
+    print(f"Aux pred shape: {aux_pred.shape}")
+    print(f"Boundary map shape: {boundary_map.shape}")
+    print(f"Spectral weights shape: {spectral_weights.shape}")
+    
+    print("\nSpectral weights (mean across batch):")
+    mean_weights = spectral_weights.mean(dim=0).squeeze()
+    print(mean_weights)
+    print(f"Variance: {torch.var(mean_weights).item():.4f}")
+    
+    # 参数量
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"\nTotal parameters: {total_params:,}")

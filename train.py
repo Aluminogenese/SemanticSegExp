@@ -16,6 +16,45 @@ from utils.dataset import AdvancedDataset as DatasetClass
 
 dir_checkpoint = 'checkpoints/'
 
+class SpectralAttentionLoss(nn.Module):
+    """光谱注意力的辅助损失"""
+    def __init__(self, diversity_weight=0.5, degenerate_weight=0.3):
+        super().__init__()
+        self.diversity_weight = diversity_weight
+        self.degenerate_weight = degenerate_weight
+    
+    def forward(self, spectral_weights):
+        mean_weights = spectral_weights.mean(dim=0).squeeze()
+        
+        # 方差损失（鼓励多样性）
+        variance = torch.var(mean_weights)
+        diversity_loss = -variance
+        
+        # 反退化损失
+        distance_from_half = torch.abs(mean_weights - 0.5)
+        mean_distance = distance_from_half.mean()
+        degenerate_loss = torch.relu(0.2 - mean_distance)
+        
+        # 极端值惩罚
+        extreme_penalty = torch.mean(
+            torch.relu(spectral_weights - 0.95) + 
+            torch.relu(0.05 - spectral_weights)
+        )
+        
+        total_loss = (
+            self.diversity_weight * diversity_loss + 
+            self.degenerate_weight * degenerate_loss +
+            0.1 * extreme_penalty
+        )
+        
+        return total_loss, {
+            'diversity': diversity_loss.item(),
+            'degenerate': degenerate_loss.item(),
+            'extreme': extreme_penalty.item(),
+            'variance': variance.item(),
+            'mean_distance': mean_distance.item()
+        }
+    
 class FocalLoss(nn.Module):
     """Focal Loss - 处理类别不平衡"""
     def __init__(self, alpha=0.25, gamma=2):
@@ -144,7 +183,8 @@ def train_net(net,
               img_scale=1.0,
               mask_suffix='',
               warmup_epochs=5,
-              use_deep_supervision=True):
+              use_deep_supervision=True,
+              spectral_loss_weight=0.1):
 
     # 创建数据集
     train = DatasetClass(train_img, train_mask, img_scale, mask_suffix=mask_suffix, 
@@ -175,6 +215,7 @@ def train_net(net,
         Device:          {device.type}
         Images scaling:  {img_scale}
         Deep Supervision: {use_deep_supervision}
+        Spectral Loss Weight: {spectral_loss_weight}
     ''')
 
     # 组合损失函数
@@ -187,6 +228,12 @@ def train_net(net,
     
     # 辅助损失（用于深度监督）
     aux_criterion = nn.BCEWithLogitsLoss()
+
+    # 光谱注意力损失 
+    spectral_criterion = SpectralAttentionLoss(
+        diversity_weight=0.5,
+        degenerate_weight=0.3
+    ).to(device)
 
     # MSBR 边界损失
     boundary_criterion = BoundaryAwareLoss(weight=0.5).to(device)
@@ -261,6 +308,10 @@ def train_net(net,
                     boundary_loss = boundary_criterion(boundary_map, true_masks)
                     loss = loss + boundary_loss
 
+                if spectral_weights is not None and spectral_loss_weight > 0:
+                    spectral_loss, spectral_metrics = spectral_criterion(spectral_weights)
+                    loss = loss + spectral_loss_weight * spectral_loss
+
                 epoch_loss += loss.item()
                 writer.add_scalar('Loss/train', loss.item(), global_step)
 
@@ -326,7 +377,7 @@ def train_net(net,
         scheduler.step()
         
         # 保存checkpoint
-        if save_cp and (epoch + 1) % 50 == 0:
+        if save_cp and (epoch + 1) % 100 == 0:
             try:
                 os.makedirs(dir_checkpoint, exist_ok=True)
                 torch.save(net.state_dict(),
@@ -378,6 +429,8 @@ def get_args():
                        help='Number of warmup epochs')
     parser.add_argument('--no-deep-supervision', action='store_true',
                        help='Disable deep supervision')
+    parser.add_argument('--spectral-loss-weight', type=float, default=0.1,
+                       help='Weight for spectral attention loss')
     
     return parser.parse_args()
 
@@ -444,7 +497,8 @@ if __name__ == '__main__':
                   img_scale=args.scale,
                   mask_suffix=args.mask_suffix,
                   warmup_epochs=args.warmup_epochs,
-                  use_deep_supervision=not args.no_deep_supervision)
+                  use_deep_supervision=not args.no_deep_supervision,
+                  spectral_loss_weight=args.spectral_loss_weight)
     except KeyboardInterrupt:
         torch.save(net.state_dict(), 'INTERRUPTED.pth')
         logging.info('Saved interrupt')
