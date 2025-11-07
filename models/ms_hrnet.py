@@ -26,15 +26,14 @@ class SpectralSpatialAttentionFusion(nn.Module):
         super(SpectralSpatialAttentionFusion, self).__init__()
         self.num_bands = num_bands
         self.init_weight_range = init_weight_range
-        mid_channels = max(num_bands // reduction, num_bands // 2)
 
         self.spectral_attention = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(num_bands, mid_channels, 1, bias=True),  # 加bias
-            nn.LayerNorm([mid_channels, 1, 1]),  # 归一化
+            nn.Conv2d(num_bands, num_bands // reduction, 1, bias=True),  # 加bias
+            nn.LayerNorm([num_bands // reduction, 1, 1]),  # 归一化
             nn.ReLU(inplace=True),
             nn.Dropout2d(0.1),
-            nn.Conv2d(mid_channels, num_bands, 1, bias=True),
+            nn.Conv2d(num_bands // reduction, num_bands, 1, bias=True),
         )
         # self.spectral_attention = nn.Sequential(
         #     nn.AdaptiveAvgPool2d(1),  # 全局池化 [B, C, H, W] -> [B, C, 1, 1]
@@ -77,7 +76,7 @@ class SpectralSpatialAttentionFusion(nn.Module):
             if isinstance(m, nn.Conv2d):
                 nn.init.xavier_uniform_(m.weight)
                 if 'spectral_attention' in name and m.bias is not None:
-                    nn.init.constant_(m.bias, 1.4)
+                    nn.init.constant_(m.bias, 0.5)
             elif isinstance(m, (nn.BatchNorm2d, nn.LayerNorm)):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
