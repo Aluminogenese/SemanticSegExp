@@ -22,61 +22,81 @@ class SpectralSpatialAttentionFusion(nn.Module):
     
     专门针对 RGB+NIR 4波段遥感影像设计
     """
-    def __init__(self, num_bands=4, reduction=2, init_weight_range=(0.7, 0.9)):
+    def __init__(self, num_bands=4, reduction=2, num_heads=2, init_temperature=5.0):
         super(SpectralSpatialAttentionFusion, self).__init__()
         self.num_bands = num_bands
-        self.init_weight_range = init_weight_range
+        self.num_heads = num_heads
 
-        self.spectral_attention = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(num_bands, num_bands // reduction, 1, bias=True),  # 加bias
-            nn.LayerNorm([num_bands // reduction, 1, 1]),  # 归一化
-            nn.ReLU(inplace=True),
-            nn.Dropout2d(0.1),
-            nn.Conv2d(num_bands // reduction, num_bands, 1, bias=True),
-        )
-        # self.spectral_attention = nn.Sequential(
-        #     nn.AdaptiveAvgPool2d(1),  # 全局池化 [B, C, H, W] -> [B, C, 1, 1]
-        #     nn.Conv2d(num_bands, num_bands // reduction, 1, bias=False),
-        #     nn.ReLU(inplace=True),
-        #     nn.Conv2d(num_bands // reduction, num_bands, 1, bias=False),
-        #     nn.Sigmoid()
-        # )
-        
-        # Inter-Band Interaction: 建模波段间关系
-        # 例如: NDVI = (NIR - Red) / (NIR + Red)
-        # 网络自动学习类似的波段组合
+        self.spectral_attention_heads = nn.ModuleList([
+            nn.Sequential(
+                nn.AdaptiveAvgPool2d(1),
+                nn.Conv2d(num_bands, num_bands // reduction, 1, bias=True),
+                nn.LayerNorm([num_bands // reduction, 1, 1]),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(num_bands // reduction, num_bands, 1, bias=True),
+                # 注意：这里不用 Sigmoid，后面会用 Softmax
+            )
+            for _ in range(num_heads)
+        ])
+
+        self.temperature = nn.Parameter(torch.ones(num_heads) * init_temperature)
+
         self.band_interaction = nn.Sequential(
-            nn.Conv2d(num_bands, num_bands * 2, 1, bias=False),
+            # 深度可分离卷积
+            nn.Conv2d(num_bands, num_bands * 2, 3, padding=1, 
+                     groups=num_bands, bias=False),
             nn.BatchNorm2d(num_bands * 2),
             nn.ReLU(inplace=True),
+            
+            # 点卷积
             nn.Conv2d(num_bands * 2, num_bands, 1, bias=False),
             nn.BatchNorm2d(num_bands)
         )
-
-        self.gate_conv = nn.Sequential(
-            nn.Conv2d(num_bands, num_bands, 1, bias=True),
+        # NIR 特征增强（针对建筑物分割）
+        if num_bands == 4:
+            self.nir_enhance = nn.Sequential(
+                nn.Conv2d(1, num_bands // 2, 3, padding=1, bias=False),
+                nn.BatchNorm2d(num_bands // 2),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(num_bands // 2, num_bands, 1, bias=False),
+                nn.Sigmoid()
+            )
+        else:
+            self.nir_enhance = None
+        
+        self.spatial_branches = nn.ModuleList([
+            self._make_spatial_branch(num_bands, dilation=d)
+            for d in [1, 2, 3]
+        ])
+        
+        self.spatial_fusion = nn.Sequential(
+            nn.Conv2d(3, 1, 1),
             nn.Sigmoid()
         )
+        
+        # ============ 4. 门控融合 ============
+        # 控制注意力的强度（防止过强）
+        self.alpha = nn.Parameter(torch.tensor(0.5))  # 可学习的残差权重
 
-        # Spatial Attention: 关注建筑物空间分布
-        self.spatial_attention = nn.Sequential(
-            nn.Conv2d(num_bands, num_bands // 2, 3, padding=1, bias=False),
-            nn.BatchNorm2d(num_bands // 2),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(num_bands // 2, 1, 3, padding=1, bias=False),
-            nn.Sigmoid()
-        )
-
-        self.temperature = nn.Parameter(torch.ones(1) * 1.0)
         self._init_weights()
 
+    def _make_spatial_branch(self, in_channels, dilation=1):
+        """创建单个空间注意力分支"""
+        return nn.Sequential(
+            nn.Conv2d(in_channels, in_channels // 4, 3, 
+                     padding=dilation, dilation=dilation, bias=False),
+            nn.BatchNorm2d(in_channels // 4),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(in_channels // 4, 1, 1),
+        )
+    
     def _init_weights(self):
-        for name, m in self.named_modules():
+        for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.xavier_uniform_(m.weight)
-                if 'spectral_attention' in name and m.bias is not None:
-                    nn.init.constant_(m.bias, 0.5)
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    # 关键：初始化 bias 为 0，让初始权重接近均匀分布
+                    nn.init.constant_(m.bias, 0)
             elif isinstance(m, (nn.BatchNorm2d, nn.LayerNorm)):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
@@ -89,31 +109,55 @@ class SpectralSpatialAttentionFusion(nn.Module):
             enhanced: [B, 4, H, W] - 增强后的特征
             spectral_weights: [B, 4, 1, 1] - 波段权重（用于可视化）
         """
-        # 1. Spectral Attention: 哪个波段更重要？
-        spectral_logits = self.spectral_attention(x)
-        spectral_weights = torch.sigmoid(spectral_logits / self.temperature.abs().clamp(min=0.5))
+        B, C, H, W = x.shape
+        identity = x
         
-        if self.training:
-            weight_std = spectral_weights.std()
-            if weight_std < 0.05:
-                noise = torch.randn_like(spectral_weights) * 0.15
-                spectral_logits_perturbed = spectral_logits + noise
-                spectral_weights = torch.sigmoid(spectral_logits_perturbed / self.temperature.abs().clamp(min=0.5))
-        spectral_weights = self.spectral_attention(x)  # [B, 4, 1, 1]
-
-        x_spectral = x * spectral_weights
+        # ============ 1. 多头光谱注意力（Softmax 归一化）============
+        spectral_logits_list = []
+        for head in self.spectral_attention_heads:
+            logits = head(x)  # [B, C, 1, 1]
+            spectral_logits_list.append(logits)
         
-        # 2. Inter-Band Interaction: 波段间如何组合？
+        # 多头融合：对每个头使用温度缩放的 Softmax
+        spectral_weights_list = []
+        for i, logits in enumerate(spectral_logits_list):
+            # 温度缩放 + Softmax（在通道维度）
+            temp = self.temperature[i].abs().clamp(min=1.0)  # 确保温度 >= 1
+            weights = F.softmax(logits / temp, dim=1)  # [B, C, 1, 1]
+            spectral_weights_list.append(weights)
+        
+        # 平均多个头的权重
+        spectral_weights = torch.stack(spectral_weights_list).mean(dim=0)
+        
+        # 归一化到和为 1（理论上已经是，但为了数值稳定）
+        spectral_weights = spectral_weights / (spectral_weights.sum(dim=1, keepdim=True) + 1e-8)
+        
+        # 应用光谱注意力
+        x_spectral = x * spectral_weights * C  # 乘以 C 补偿 Softmax 的缩放
+        
+        # ============ 2. 波段交互建模 ============
         x_interact = self.band_interaction(x_spectral)
-        # x_enhanced = x_spectral + x_interact  # 残差连接
-        gate = self.gate_conv(x_spectral)
-        x_enhanced = x_spectral + gate * x_interact
-
-        # 3. Spatial Attention: 建筑物在哪里？
-        spatial_weights = self.spatial_attention(x_enhanced)  # [B, 1, H, W]
-        x_final = x_enhanced * spatial_weights
         
-        return x_final, spectral_weights
+        # NIR 增强
+        if self.nir_enhance is not None and C == 4:
+            nir_band = x[:, 3:4, :, :]
+            nir_weight = self.nir_enhance(nir_band)
+            x_interact = x_interact * nir_weight
+        
+        # ============ 3. 多尺度空间注意力 ============
+        spatial_maps = [branch(x_interact) for branch in self.spatial_branches]
+        spatial_maps = torch.cat(spatial_maps, dim=1)
+        spatial_weights = self.spatial_fusion(spatial_maps)
+        
+        x_final = x_interact * spatial_weights
+        
+        # ============ 4. 自适应残差连接 ============
+        # alpha 控制注意力的强度（0.5 表示 50% 原始 + 50% 注意力）
+        alpha_clamped = torch.sigmoid(self.alpha)  # 限制在 [0, 1]
+        x_output = alpha_clamped * x_final + (1 - alpha_clamped) * identity
+        
+        return x_output, spectral_weights
+
 
 
 class MultiScaleBoundaryRefinement(nn.Module):
@@ -366,8 +410,7 @@ class MSHRNetOCR(nn.Module):
         # ============ SSAF (输入端) ============
         self.ssaf = SpectralSpatialAttentionFusion(
             num_bands=in_channels, 
-            reduction=2,
-            init_weight_range=(0.7, 0.9)
+            reduction=2
         )
         
         # ============ HRNet Backbone ============
