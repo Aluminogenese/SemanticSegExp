@@ -319,8 +319,7 @@ def get_args():
                        help='Downscaling factor of images')
     parser.add_argument('--model', type=str, default='ms_hrnet_advanced',
                        choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 
-                               'hrnet', 'hrnet_ocr', 'ms_hrnet',
-                               'ms_hrnet_advanced', 'ms_hrnet_no_msbr'],
+                               'hrnet', 'hrnet_ocr', 'ms_hrnet'],
                        help='Model architecture')
     parser.add_argument('--in-ch', type=int, default=4,
                        help='Number of input channels')
@@ -344,7 +343,7 @@ if __name__ == '__main__':
     logging.info(f'Using device {device}')
 
     # 导入模型
-    from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR, MSHRNetAdvanced
+    from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR
     
     if args.model == 'unet':
         net = UNet(in_channels=args.in_ch, num_classes=1)
@@ -360,9 +359,6 @@ if __name__ == '__main__':
         net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     elif args.model == 'ms_hrnet':
         net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
-        # ============ 消融实验版本 ============
-    elif args.model == 'ms_hrnet_advanced':
-        net = MSHRNetAdvanced(in_channels=args.in_ch, num_classes=1, base_channels=48)
     else:
         raise ValueError(f'Unknown model architecture: {args.model}')
     
