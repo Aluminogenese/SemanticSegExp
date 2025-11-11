@@ -159,92 +159,6 @@ class SpectralSpatialAttentionFusion(nn.Module):
         return x_output, spectral_weights
 
 
-
-class MultiScaleBoundaryRefinement(nn.Module):
-    """
-    Multi-Scale Boundary Refinement (MSBR)
-
-    1. 多尺度边界特征提取 (dilation rates: 1, 2, 4)
-    2. 边界感知的特征增强
-    3. 自适应边界权重学习
-    
-    相比原来的 EdgeAttention:
-    - 原来: 单尺度 3x3 卷积
-    - 现在: 多尺度空洞卷积 + 特征融合
-    """
-    def __init__(self, in_channels, reduction=4):
-        super(MultiScaleBoundaryRefinement, self).__init__()
-        mid_channels = in_channels // reduction
-        
-        # Multi-scale boundary detection
-        self.boundary_branch1 = nn.Sequential(
-            nn.Conv2d(in_channels, mid_channels, 3, padding=1, bias=False),
-            nn.BatchNorm2d(mid_channels),
-            nn.ReLU(inplace=True)
-        )
-        
-        self.boundary_branch2 = nn.Sequential(
-            nn.Conv2d(in_channels, mid_channels, 3, padding=2, dilation=2, bias=False),
-            nn.BatchNorm2d(mid_channels),
-            nn.ReLU(inplace=True)
-        )
-        
-        self.boundary_branch3 = nn.Sequential(
-            nn.Conv2d(in_channels, mid_channels, 3, padding=4, dilation=4, bias=False),
-            nn.BatchNorm2d(mid_channels),
-            nn.ReLU(inplace=True)
-        )
-        
-        # Boundary feature fusion
-        self.boundary_fusion = nn.Sequential(
-            nn.Conv2d(mid_channels * 3, mid_channels, 1, bias=False),
-            nn.BatchNorm2d(mid_channels),
-            nn.ReLU(inplace=True)
-        )
-        
-        # Boundary weight generation
-        self.boundary_weight = nn.Sequential(
-            nn.Conv2d(mid_channels, mid_channels // 2, 3, padding=1, bias=False),
-            nn.BatchNorm2d(mid_channels // 2),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(mid_channels // 2, 1, 1),
-            nn.Sigmoid()
-        )
-        
-        # Feature enhancement
-        self.feature_enhance = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, 3, padding=1, bias=False),
-            nn.BatchNorm2d(in_channels),
-            nn.ReLU(inplace=True)
-        )
-        
-    def forward(self, x):
-        """
-        Args:
-            x: [B, C, H, W] 输入特征
-        Returns:
-            out: [B, C, H, W] 边界增强后的特征
-            boundary_map: [B, 1, H, W] 边界概率图
-        """
-        # Multi-scale boundary detection
-        b1 = self.boundary_branch1(x)
-        b2 = self.boundary_branch2(x)
-        b3 = self.boundary_branch3(x)
-        
-        # Fusion
-        boundary_feat = torch.cat([b1, b2, b3], dim=1)
-        boundary_feat = self.boundary_fusion(boundary_feat)
-        
-        # Generate boundary map
-        boundary_map = self.boundary_weight(boundary_feat)
-        
-        # Feature enhancement: 边界区域加强
-        enhanced = self.feature_enhance(x)
-        out = x + enhanced * boundary_map
-        
-        return out, boundary_map
-
-
 class SpatialOCR(nn.Module):
     """
     Object-Contextual Representations (OCR)
@@ -488,9 +402,6 @@ class MSHRNetOCR(nn.Module):
             num_classes=num_classes
         )
         
-        # ============ MSBR ============
-        self.msbr = MultiScaleBoundaryRefinement(base_channels * 2, reduction=4)
-        
         # Final classifier
         self.final_conv = nn.Sequential(
             nn.Conv2d(base_channels * 2, base_channels, 3, padding=1, bias=False),
@@ -550,9 +461,6 @@ class MSHRNetOCR(nn.Module):
         # ============ OCR: 上下文增强 ============
         feats, aux_pred = self.ocr(feats)
         
-        # ============ MSBR: 边界细化 ============
-        feats, boundary_map = self.msbr(feats)
-        
         # Final prediction
         out = self.final_conv(feats)
         out = F.interpolate(out, size=input_size, mode='bilinear', align_corners=True)
@@ -560,8 +468,7 @@ class MSHRNetOCR(nn.Module):
         if self.training:
             # 返回多个输出用于深度监督
             aux_pred = F.interpolate(aux_pred, size=input_size, mode='bilinear', align_corners=True)
-            boundary_map = F.interpolate(boundary_map, size=input_size, mode='bilinear', align_corners=True)
-            return out, aux_pred, boundary_map, spectral_weights
+            return out, aux_pred, spectral_weights
         else:
             return out
         
@@ -580,11 +487,10 @@ if __name__ == '__main__':
     print(f"Input shape: {x.shape}")
     
     # 前向传播
-    out, aux_pred, boundary_map, spectral_weights = model(x)
+    out, aux_pred, spectral_weights = model(x)
     
     print(f"Output shape: {out.shape}")
     print(f"Aux pred shape: {aux_pred.shape}")
-    print(f"Boundary map shape: {boundary_map.shape}")
     print(f"Spectral weights shape: {spectral_weights.shape}")
     
     print("\nSpectral weights (mean across batch):")

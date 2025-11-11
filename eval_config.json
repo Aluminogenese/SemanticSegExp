@@ -1,0 +1,44 @@
+{
+    "models": [
+      {
+        "name": "UNet",
+        "type": "unet",
+        "path": "checkpoints/BEST_unet_dat_4bands.pth"
+      },
+      {
+        "name": "UNet++",
+        "type": "unet_plusplus",
+        "path": "checkpoints/BEST_unet_plusplus_dat_4bands.pth"
+      },
+      {
+        "name": "PSPNet",
+        "type": "pspnet",
+        "path": "checkpoints/BEST_pspnet_dat_4bands.pth"
+      },
+      {
+        "name": "DeepLabV3+",
+        "type": "deeplabv3_plus",
+        "path": "checkpoints/BEST_deeplabv3_plus_dat_4bands.pth"
+      },
+      {
+        "name": "HRNet-OCR",
+        "type": "hrnet_ocr",
+        "path": "checkpoints/BEST_hrnet_ocr_dat_4bands.pth"
+      },
+      {
+        "name": "MS-HRNet (Ours)",
+        "type": "ms_hrnet",
+        "path": "checkpoints/BEST_ms_hrnet_dat_4bands.pth"
+      },
+      {
+        "name": "MS-HRNet w/o SSAF",
+        "type": "ms_hrnet_no_ssaf",
+        "path": "checkpoints/BEST_ms_hrnet_no_ssaf_dat_4bands.pth"
+      },
+      {
+        "name": "MS-HRNet w/o MSBR",
+        "type": "ms_hrnet_no_msbr",
+        "path": "checkpoints/BEST_ms_hrnet_no_msbr_dat_4bands.pth"
+      }
+    ]
+  }

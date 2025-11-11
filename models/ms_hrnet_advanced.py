@@ -1,49 +1,25 @@
-"""
-MS-HRNet 消融实验版本
-
-支持的配置:
-1. Full: SSAF + HRNet + OCR + MSBR (完整版)
-2. w/o SSAF: HRNet + OCR + MSBR
-3. w/o MSBR: SSAF + HRNet + OCR
-4. w/o Both: HRNet + OCR (相当于 HRNetOCR)
-"""
-
-import torch
+from .hrnet import HRNetBranch, FuseLayer, SpatialOCR, BasicBlock
+from .advanced_ssaf import AdvancedSSAF
 import torch.nn as nn
 import torch.nn.functional as F
+import torch
 
-# 从 ms_hrnet.py 导入需要的模块
-from .ms_hrnet import (
-    SpectralSpatialAttentionFusion,
-    MultiScaleBoundaryRefinement,
-    SpatialOCR,
-    BasicBlock,
-    HRNetBranch,
-    FuseLayer
-)
-
-
-class MSHRNetAblation(nn.Module):
-    """
-    MS-HRNet 消融实验版本
-    
-    Args:
-        use_ssaf: 是否使用 SSAF 模块
-        use_msbr: 是否使用 MSBR 模块
-    """
-    def __init__(self, in_channels=4, num_classes=1, base_channels=48,
-                 use_ssaf=True, use_msbr=True):
-        super(MSHRNetAblation, self).__init__()
+class MSHRNetAdvanced(nn.Module):
+    def __init__(self, in_channels=4, num_classes=1, base_channels=48):
+        super().__init__()
         self.n_channels = in_channels
         self.n_classes = num_classes
-        self.use_ssaf = use_ssaf
-        self.use_msbr = use_msbr
         
-        # ============ SSAF (可选) ============
-        if self.use_ssaf:
-            self.ssaf = SpectralSpatialAttentionFusion(num_bands=in_channels, reduction=2)
+        # 使用 Advanced SSAF
+        self.ssaf = AdvancedSSAF(
+            num_bands=in_channels,
+            reduction=2,
+            use_index=True,
+            use_interaction=True
+        )
         
-        # ============ HRNet Backbone ============
+# ============ HRNet Backbone ============
+        # Stage 1
         self.conv1 = nn.Conv2d(in_channels, 64, 3, 2, 1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.conv2 = nn.Conv2d(64, 64, 3, 2, 1, bias=False)
@@ -52,6 +28,7 @@ class MSHRNetAblation(nn.Module):
         
         self.layer1 = HRNetBranch(4, 64, base_channels)
         
+        # Transitions and Stages
         self.transition1 = nn.ModuleList([
             None,
             nn.Sequential(
@@ -116,10 +93,6 @@ class MSHRNetAblation(nn.Module):
             num_classes=num_classes
         )
         
-        # ============ MSBR (可选) ============
-        if self.use_msbr:
-            self.msbr = MultiScaleBoundaryRefinement(base_channels * 2, reduction=4)
-        
         # Final classifier
         self.final_conv = nn.Sequential(
             nn.Conv2d(base_channels * 2, base_channels, 3, padding=1, bias=False),
@@ -141,10 +114,9 @@ class MSHRNetAblation(nn.Module):
     def forward(self, x):
         input_size = x.size()[2:]
         
-        # ============ SSAF (可选) ============
-        spectral_weights = None
-        if self.use_ssaf:
-            x, spectral_weights = self.ssaf(x)
+        # ============ SSAF: 多光谱融合 ============
+        # 原先误将第二返回值当作张量，这里改为解包字典
+        x, weights_dict = self.ssaf(x)  # weights_dict 包含多种权重
         
         # ============ HRNet Backbone ============
         x = self.relu(self.bn1(self.conv1(x)))
@@ -178,23 +150,54 @@ class MSHRNetAblation(nn.Module):
         feats = torch.cat([x0, x1, x2, x3], dim=1)
         feats = self.aggregate(feats)
         
-        # ============ OCR ============
+        # ============ OCR: 上下文增强 ============
         feats, aux_pred = self.ocr(feats)
-        
-        # ============ MSBR (可选) ============
-        boundary_map = None
-        if self.use_msbr:
-            feats, boundary_map = self.msbr(feats)
         
         # Final prediction
         out = self.final_conv(feats)
         out = F.interpolate(out, size=input_size, mode='bilinear', align_corners=True)
         
         if self.training:
-            # 返回多个输出用于深度监督
             aux_pred = F.interpolate(aux_pred, size=input_size, mode='bilinear', align_corners=True)
-            if boundary_map is not None:
-                boundary_map = F.interpolate(boundary_map, size=input_size, mode='bilinear', align_corners=True)
-            return out, aux_pred, boundary_map, spectral_weights
+            # 返回完整的权重字典，供可视化（包含 spectral_weights 与 index_weights 等）
+            return out, aux_pred, weights_dict
         else:
             return out
+        
+if __name__ == '__main__':
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    # 创建模型
+    model = MSHRNetAdvanced(in_channels=4, num_classes=1, base_channels=48)
+    model.to(device)
+    model.train()
+    
+    # 测试输入
+    x = torch.randn(2, 4, 512, 512).to(device)
+    
+    print("Testing MSHRNetAdvanced...")
+    print(f"Input shape: {x.shape}")
+    
+    # 前向传播（现在返回 3 项，其中第 3 项为字典）
+    out, aux_pred, weights_dict = model(x)
+    
+    print(f"Output shape: {out.shape}")
+    print(f"Aux pred shape: {aux_pred.shape}")
+    
+    if isinstance(weights_dict, dict):
+        spec = weights_dict.get('spectral_weights')
+        if torch.is_tensor(spec):
+            print(f"Spectral weights shape: {spec.shape}")
+            mean_weights = spec.mean(dim=0).squeeze()
+            print("\nSpectral weights (mean across batch):", mean_weights)
+            print(f"Variance: {torch.var(mean_weights).item():.4f}")
+        idx = weights_dict.get('index_weights')
+        if torch.is_tensor(idx):
+            mean_idx = idx.mean(dim=0).squeeze()
+            print("Index weights (mean across batch):", mean_idx)
+    else:
+        print("No weights dict returned.")
+    
+    # 参数量
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"\nTotal parameters: {total_params:,}")

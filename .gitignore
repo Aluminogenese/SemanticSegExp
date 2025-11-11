@@ -182,3 +182,5 @@ cython_debug/
 
 checkpoints/
 runs/
+results/
+logs/

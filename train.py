@@ -46,41 +46,7 @@ class DiceLoss(nn.Module):
         
         return 1 - dice
 
-class BoundaryAwareLoss(nn.Module):
-    """
-    边界感知损失
-    用于 MSBR 模块的辅助监督
-    """
-    def __init__(self, weight=0.5):
-        super(BoundaryAwareLoss, self).__init__()
-        self.weight = weight
-        self.bce = nn.BCELoss()
-        
-        # Laplacian 算子提取边界
-        laplacian_kernel = torch.tensor([
-            [-1, -1, -1],
-            [-1,  8, -1],
-            [-1, -1, -1]
-        ], dtype=torch.float32).view(1, 1, 3, 3)
-        self.register_buffer('laplacian_kernel', laplacian_kernel)
-    
-    def extract_boundary(self, mask):
-        """从 mask 提取边界"""
-        # 确保 kernel 和 mask 在同一设备上
-        boundary = F.conv2d(mask, self.laplacian_kernel.to(mask.device), padding=1)
-        boundary = (boundary > 0).float()
-        return boundary
-    
-    def forward(self, boundary_pred, gt_mask):
-        """
-        Args:
-            boundary_pred: [B, 1, H, W] 预测的边界图
-            gt_mask: [B, 1, H, W] GT mask
-        """
-        gt_boundary = self.extract_boundary(gt_mask)
-        loss = self.bce(boundary_pred, gt_boundary)
-        return self.weight * loss
-    
+
 class BoundaryLoss(nn.Module):
     """边界损失 - 增强建筑物边缘"""
     def __init__(self):
@@ -188,9 +154,6 @@ def train_net(net,
     # 辅助损失（用于深度监督）
     aux_criterion = nn.BCEWithLogitsLoss()
 
-    # MSBR 边界损失
-    boundary_criterion = BoundaryAwareLoss(weight=0.5).to(device)
-
     # AdamW优化器（比RMSprop更适合HRNet）
     optimizer = optim.AdamW(net.parameters(), lr=lr, weight_decay=0.01)
     
@@ -223,14 +186,13 @@ def train_net(net,
 
                 # 前向传播（兼容无 aux_pred 的模型）
                 outputs = net(imgs)
-                if net_name in ['ms_hrnet', 'ms_hrnet_no_ssaf', 'ms_hrnet_no_msbr']:
+                if net_name in ['ms_hrnet', 'ms_hrnet_advanced']:
                     # MS-HRNet 及其消融版本
-                    if isinstance(outputs, tuple) and len(outputs) == 4:
-                        masks_pred, aux_pred, boundary_map, spectral_weights = outputs
+                    if isinstance(outputs, tuple) and len(outputs) == 3:
+                        masks_pred, aux_pred, spectral_weights = outputs
                     else:
                         masks_pred = outputs
                         aux_pred = None
-                        boundary_map = None
                         spectral_weights = None
                 elif net_name in ['hrnet_ocr', 'pspnet']:
                     # HRNetOCR 和 PSPNet 有辅助输出
@@ -240,13 +202,11 @@ def train_net(net,
                     else:
                         masks_pred = outputs
                         aux_pred = None
-                    boundary_map = None
                     spectral_weights = None
                 else:
                     # 其他模型
                     masks_pred = outputs
                     aux_pred = None
-                    boundary_map = None
                     spectral_weights = None
 
                 # 计算损失
@@ -256,10 +216,6 @@ def train_net(net,
                     aux_loss = aux_criterion(aux_pred, true_masks)
                     loss = main_loss + 0.4 * aux_loss
 
-                    # MSBR 边界损失（仅 MS-HRNet）
-                if boundary_map is not None:
-                    boundary_loss = boundary_criterion(boundary_map, true_masks)
-                    loss = loss + boundary_loss
 
                 epoch_loss += loss.item()
                 writer.add_scalar('Loss/train', loss.item(), global_step)
@@ -292,7 +248,7 @@ def train_net(net,
                             try:
                                 os.makedirs(dir_checkpoint, exist_ok=True)
                                 torch.save(net.state_dict(),
-                                         dir_checkpoint + f'BEST_{net_name}_{dataset_name}.pth')
+                                         dir_checkpoint + f'best_{net_name}_{dataset_name}.pth')
                                 logging.info(f'Best model saved! Dice: {best_dice:.4f}')
                             except OSError:
                                 pass
@@ -309,9 +265,7 @@ def train_net(net,
                     writer.add_images('masks/true', true_masks[:4], global_step)
                     writer.add_images('masks/pred', 
                                     torch.sigmoid(masks_pred[:4]) > 0.5, global_step)
-                    # ==================== 边界可视化 ====================
-                    if boundary_map is not None:
-                        writer.add_images('boundary/pred', boundary_map[:4], global_step)
+
                     # ==================== 光谱权重可视化 ====================
                     if spectral_weights is not None:
                         # spectral_weights: [B, 4, 1, 1]
@@ -363,10 +317,10 @@ def get_args():
                        help='Load model from a .pth file')
     parser.add_argument('-s', '--scale', type=float, default=1.0,
                        help='Downscaling factor of images')
-    parser.add_argument('--model', type=str, default='ms_hrnet',
+    parser.add_argument('--model', type=str, default='ms_hrnet_advanced',
                        choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 
                                'hrnet', 'hrnet_ocr', 'ms_hrnet',
-                               'ms_hrnet_no_ssaf', 'ms_hrnet_no_msbr'],
+                               'ms_hrnet_advanced', 'ms_hrnet_no_msbr'],
                        help='Model architecture')
     parser.add_argument('--in-ch', type=int, default=4,
                        help='Number of input channels')
@@ -390,7 +344,7 @@ if __name__ == '__main__':
     logging.info(f'Using device {device}')
 
     # 导入模型
-    from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR, MSHRNetAblation
+    from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR, MSHRNetAdvanced
     
     if args.model == 'unet':
         net = UNet(in_channels=args.in_ch, num_classes=1)
@@ -407,12 +361,8 @@ if __name__ == '__main__':
     elif args.model == 'ms_hrnet':
         net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
         # ============ 消融实验版本 ============
-    elif args.model == 'ms_hrnet_no_ssaf':
-        net = MSHRNetAblation(in_channels=args.in_ch, num_classes=1, base_channels=48,
-                             use_ssaf=False, use_msbr=True)
-    elif args.model == 'ms_hrnet_no_msbr':
-        net = MSHRNetAblation(in_channels=args.in_ch, num_classes=1, base_channels=48,
-                             use_ssaf=True, use_msbr=False)
+    elif args.model == 'ms_hrnet_advanced':
+        net = MSHRNetAdvanced(in_channels=args.in_ch, num_classes=1, base_channels=48)
     else:
         raise ValueError(f'Unknown model architecture: {args.model}')
     

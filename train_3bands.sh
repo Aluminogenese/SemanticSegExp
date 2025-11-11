@@ -21,7 +21,7 @@ SCALE="${SCALE:-1.0}"
 WARMUP="${WARMUP:-5}"
 DEEP_SUP="${DEEP_SUP:-1}"   # 1 启用深度监督，0 关闭
 
-MODELS_STR="${MODELS:-unet unet_plusplus pspnet deeplabv3_plus hrnet_ocr ms_hrnet}"
+MODELS_STR="${MODELS:-unet unet_plusplus hrnet_ocr}"
 IFS=' ' read -r -a MODELS <<< "$MODELS_STR"
 
 # 日志目录
