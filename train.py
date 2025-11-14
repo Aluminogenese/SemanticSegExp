@@ -186,7 +186,7 @@ def train_net(net,
 
                 # 前向传播（兼容无 aux_pred 的模型）
                 outputs = net(imgs)
-                if net_name in ['ms_hrnet', 'ms_hrnet_advanced']:
+                if net_name in ['ms_hrnet', 'ms_hrnet1']:
                     # MS-HRNet 及其消融版本
                     if isinstance(outputs, tuple) and len(outputs) == 3:
                         masks_pred, aux_pred, spectral_weights = outputs
@@ -319,7 +319,7 @@ def get_args():
                        help='Downscaling factor of images')
     parser.add_argument('--model', type=str, default='ms_hrnet_advanced',
                        choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 
-                               'hrnet', 'hrnet_ocr', 'ms_hrnet'],
+                               'hrnet', 'hrnet_ocr', 'ms_hrnet', 'ms_hrnet1'],
                        help='Model architecture')
     parser.add_argument('--in-ch', type=int, default=4,
                        help='Number of input channels')
@@ -359,6 +359,9 @@ if __name__ == '__main__':
         net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     elif args.model == 'ms_hrnet':
         net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
+    elif args.model == 'ms_hrnet1':
+        from models.ms_hrnet1 import MSHRNetOCR1
+        net = MSHRNetOCR1(in_channels=args.in_ch, num_classes=1, base_channels=48)
     else:
         raise ValueError(f'Unknown model architecture: {args.model}')
     

@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from comprehensive_evaluation import ComprehensiveEvaluator
 
 import torch
-from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR, MSHRNetAblation
+from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR
 
 
 def load_model(model_type, model_path, in_channels, device):
@@ -43,12 +43,6 @@ def load_model(model_type, model_path, in_channels, device):
         net = HRNetOCR(in_channels=in_channels, num_classes=1, base_channels=48)
     elif model_type == 'ms_hrnet':
         net = MSHRNetOCR(in_channels=in_channels, num_classes=1, base_channels=48)
-    elif model_type == 'ms_hrnet_no_ssaf':
-        net = MSHRNetAblation(in_channels=in_channels, num_classes=1, base_channels=48,
-                             use_ssaf=False, use_msbr=True)
-    elif model_type == 'ms_hrnet_no_msbr':
-        net = MSHRNetAblation(in_channels=in_channels, num_classes=1, base_channels=48,
-                             use_ssaf=True, use_msbr=False)
     else:
         raise ValueError(f'Unknown model type: {model_type}')
     

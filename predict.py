@@ -14,8 +14,7 @@ from PIL import Image
 from glob import glob
 import json
 
-from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR, MSHRNetAblation
-
+from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR
 
 def read_image_any(path):
     """读取任意格式图像"""
@@ -212,12 +211,6 @@ def main():
         net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     elif args.model_type == 'ms_hrnet_w48':
         net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model_type == 'ms_hrnet_no_ssaf':
-        net = MSHRNetAblation(in_channels=args.in_ch, num_classes=1, base_channels=48,
-                             use_ssaf=False, use_msbr=True)
-    elif args.model_type == 'ms_hrnet_no_msbr':
-        net = MSHRNetAblation(in_channels=args.in_ch, num_classes=1, base_channels=48,
-                             use_ssaf=True, use_msbr=False)
     else:
         raise ValueError(f'Unknown model architecture: {args.model}')
     

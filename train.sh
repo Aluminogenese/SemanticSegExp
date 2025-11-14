@@ -29,7 +29,7 @@ BS_DEEPLAB="${BS_DEEPLAB:-}"    # 例如 4
 BS_PSPNET="${BS_PSPNET:-}"      # 例如 4
 
 # 需要跑的模型列表（空格分隔，可通过环境变量 MODELS 覆盖）
-MODELS_STR="${MODELS:-ms_hrnet}"
+MODELS_STR="${MODELS:-ms_hrnet ms_hrnet1}"
 IFS=' ' read -r -a MODELS <<< "$MODELS_STR"
 
 # 日志目录

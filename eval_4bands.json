@@ -31,14 +31,9 @@
         "path": "checkpoints/BEST_ms_hrnet_dat_4bands.pth"
       },
       {
-        "name": "MS-HRNet w/o SSAF",
-        "type": "ms_hrnet_no_ssaf",
-        "path": "checkpoints/BEST_ms_hrnet_no_ssaf_dat_4bands.pth"
-      },
-      {
-        "name": "MS-HRNet w/o MSBR",
-        "type": "ms_hrnet_no_msbr",
-        "path": "checkpoints/BEST_ms_hrnet_no_msbr_dat_4bands.pth"
+        "name": "MS-HRNet",
+        "type": "ms_hrnet",
+        "path": "checkpoints/best_ms_hrnet_dat_4bands.pth"
       }
     ]
   }

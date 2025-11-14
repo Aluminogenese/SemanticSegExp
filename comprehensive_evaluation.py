@@ -32,7 +32,7 @@ import pandas as pd
 from scipy import stats
 import seaborn as sns
 
-from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR, MSHRNetAblation
+from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR
 from predict import read_image_any, normalize_image
 
 
@@ -514,12 +514,6 @@ def main():
         net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     elif args.model_type == 'ms_hrnet':
         net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model_type == 'ms_hrnet_no_ssaf':
-        net = MSHRNetAblation(in_channels=args.in_ch, num_classes=1, base_channels=48,
-                             use_ssaf=False, use_msbr=True)
-    elif args.model_type == 'ms_hrnet_no_msbr':
-        net = MSHRNetAblation(in_channels=args.in_ch, num_classes=1, base_channels=48,
-                             use_ssaf=True, use_msbr=False)
     else:
         raise ValueError(f'Unknown model architecture: {args.model_type}')
     
