@@ -180,7 +180,7 @@ def main():
     parser.add_argument('--model-type', default='unet',
                        choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 
                                'hrnet', 'hrnet_ocr', 'ms_hrnet',
-                               'ms_hrnet_no_ssaf', 'ms_hrnet_no_msbr'],
+                                'ms_hrnet_v2', 'ms_hrnet_v2_min'],
                        help='模型类型')
     parser.add_argument('--in-ch', type=int, default=4, help='输入通道数')
     parser.add_argument('--tta', action='store_true', help='启用TTA（8x变换）')
@@ -211,6 +211,13 @@ def main():
         net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     elif args.model_type == 'ms_hrnet_w48':
         net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
+    elif args.model_type == 'ms_hrnet_v2':
+        from models import MSHRNetV2
+        net = MSHRNetV2(in_channels=args.in_ch, num_classes=1, base_channels=48)
+    elif args.model_type == 'ms_hrnet_v2_min':
+        from models import MSHRNetV2
+        net = MSHRNetV2(in_channels=args.in_ch, num_classes=1, 
+                        base_channels=48, use_minimal_ssaf=True)
     else:
         raise ValueError(f'Unknown model architecture: {args.model}')
     

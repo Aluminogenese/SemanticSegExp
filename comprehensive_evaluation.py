@@ -473,7 +473,7 @@ def main():
     parser.add_argument('--model-type', required=True,
                        choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 
                                'hrnet', 'hrnet_ocr', 'ms_hrnet',
-                               'ms_hrnet_no_ssaf', 'ms_hrnet_no_msbr'],
+                               'ms_hrnet_no_ssaf', 'ms_hrnet_no_msbr', 'ms_hrnet_v2', 'ms_hrnet_v2_min'],
                        help='模型类型')
     parser.add_argument('--model-name', default=None, help='模型名称（用于报告）')
     
@@ -514,6 +514,14 @@ def main():
         net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     elif args.model_type == 'ms_hrnet':
         net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
+    elif args.model_type == 'ms_hrnet_v2':
+        from models import MSHRNetV2
+        net = MSHRNetV2(in_channels=args.in_ch, num_classes=1, base_channels=48)
+    elif args.model_type == 'ms_hrnet_v2_min':
+        from models import MSHRNetV2
+        net = MSHRNetV2(in_channels=args.in_ch, num_classes=1, 
+                        base_channels=48, use_minimal_ssaf=True)
+
     else:
         raise ValueError(f'Unknown model architecture: {args.model_type}')
     

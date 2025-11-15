@@ -186,7 +186,14 @@ def train_net(net,
 
                 # 前向传播（兼容无 aux_pred 的模型）
                 outputs = net(imgs)
-                if net_name in ['ms_hrnet', 'ms_hrnet1']:
+                if net_name in ['ms_hrnet_v2', 'ms_hrnet_v2_min']:
+                    if isinstance(outputs, tuple) and len(outputs) == 3:
+                        masks_pred, aux_pred, attention_maps = outputs
+                    else:
+                        masks_pred = outputs
+                        aux_pred = None
+                        attention_maps = None
+                elif net_name in ['ms_hrnet', 'ms_hrnet1']:
                     # MS-HRNet 及其消融版本
                     if isinstance(outputs, tuple) and len(outputs) == 3:
                         masks_pred, aux_pred, spectral_weights = outputs
@@ -266,15 +273,28 @@ def train_net(net,
                     writer.add_images('masks/pred', 
                                     torch.sigmoid(masks_pred[:4]) > 0.5, global_step)
 
-                    # ==================== 光谱权重可视化 ====================
-                    if spectral_weights is not None:
-                        # spectral_weights: [B, 4, 1, 1]
-                        # 可视化每个波段的平均权重
-                        mean_weights = spectral_weights.mean(dim=0).squeeze()  # [4]
+                    if attention_maps is not None:
+                        # 光谱权重
+                        spectral_w = attention_maps['spectral_weights'].mean(0).squeeze()
                         band_names = ['Red', 'Green', 'Blue', 'NIR']
                         for i, name in enumerate(band_names):
-                            writer.add_scalar(f'SpectralWeights/{name}', 
-                                            mean_weights[i].item(), global_step)
+                            writer.add_scalar(f'SSAF/Spectral_{name}', 
+                                            spectral_w[i].item(), global_step)
+                        
+                        # 光谱权重方差 (监控模块是否生效)
+                        writer.add_scalar('SSAF/Spectral_Variance', 
+                                        spectral_w.var().item(), global_step)
+                        
+                        # 温度参数
+                        writer.add_scalar('SSAF/Temperature', 
+                                        attention_maps['temperature'], global_step)
+                        
+                        # 门控权重
+                        if 'gate_weights' in attention_maps:
+                            gate_w = attention_maps['gate_weights'].mean(0).squeeze()
+                            for i, name in enumerate(band_names):
+                                writer.add_scalar(f'SSAF/Gate_{name}', 
+                                                gate_w[i].item(), global_step)
 
         # 每个epoch结束后更新学习率
         scheduler.step()
@@ -317,10 +337,12 @@ def get_args():
                        help='Load model from a .pth file')
     parser.add_argument('-s', '--scale', type=float, default=1.0,
                        help='Downscaling factor of images')
-    parser.add_argument('--model', type=str, default='ms_hrnet_advanced',
-                       choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 
-                               'hrnet', 'hrnet_ocr', 'ms_hrnet', 'ms_hrnet1'],
-                       help='Model architecture')
+    parser.add_argument('--model', type=str, default='ms_hrnet_v2',
+                   choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 
+                           'hrnet', 'hrnet_ocr', 'ms_hrnet', 
+                           'ms_hrnet_v2',      # 新增 - 改进版
+                           'ms_hrnet_v2_min'   # 新增 - 轻量版
+                   ])
     parser.add_argument('--in-ch', type=int, default=4,
                        help='Number of input channels')
     parser.add_argument('--mask-suffix', type=str, default='',
@@ -362,6 +384,14 @@ if __name__ == '__main__':
     elif args.model == 'ms_hrnet1':
         from models.ms_hrnet1 import MSHRNetOCR1
         net = MSHRNetOCR1(in_channels=args.in_ch, num_classes=1, base_channels=48)
+    if args.model == 'ms_hrnet_v2':
+        from models import MSHRNetV2
+        net = MSHRNetV2(in_channels=args.in_ch, num_classes=1, 
+                        base_channels=48, use_minimal_ssaf=False)
+    elif args.model == 'ms_hrnet_v2_min':
+        from models import MSHRNetV2
+        net = MSHRNetV2(in_channels=args.in_ch, num_classes=1, 
+                        base_channels=48, use_minimal_ssaf=True)
     else:
         raise ValueError(f'Unknown model architecture: {args.model}')
     

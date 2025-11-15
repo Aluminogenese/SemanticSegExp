@@ -15,7 +15,7 @@ VAL_MASK="${VAL_MASK:-/mnt/U/Dat_Seg/dat_4bands/val/labels/}"
 # 训练超参（可通过环境变量覆盖）
 IN_CH="${IN_CH:-4}"
 EPOCHS="${EPOCHS:-400}"
-BS_DEFAULT="${BS:-8}"
+BS_DEFAULT="${BS:-4}"
 LR="${LR:-1e-3}"
 SCALE="${SCALE:-1.0}"
 WARMUP="${WARMUP:-5}"
@@ -29,7 +29,7 @@ BS_DEEPLAB="${BS_DEEPLAB:-}"    # 例如 4
 BS_PSPNET="${BS_PSPNET:-}"      # 例如 4
 
 # 需要跑的模型列表（空格分隔，可通过环境变量 MODELS 覆盖）
-MODELS_STR="${MODELS:-ms_hrnet ms_hrnet1}"
+MODELS_STR="${MODELS:-ms_hrnet_v2}"
 IFS=' ' read -r -a MODELS <<< "$MODELS_STR"
 
 # 日志目录

@@ -43,6 +43,13 @@ def load_model(model_type, model_path, in_channels, device):
         net = HRNetOCR(in_channels=in_channels, num_classes=1, base_channels=48)
     elif model_type == 'ms_hrnet':
         net = MSHRNetOCR(in_channels=in_channels, num_classes=1, base_channels=48)
+    elif model_type == 'ms_hrnet_v2':
+        from models import MSHRNetV2
+        net = MSHRNetV2(in_channels=in_channels, num_classes=1, base_channels=48)
+    elif model_type == 'ms_hrnet_v2_min':
+        from models import MSHRNetV2
+        net = MSHRNetV2(in_channels=in_channels, num_classes=1, 
+                        base_channels=48, use_minimal_ssaf=True)
     else:
         raise ValueError(f'Unknown model type: {model_type}')
     
