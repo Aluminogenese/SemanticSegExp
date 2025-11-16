@@ -255,7 +255,7 @@ def train_net(net,
                             try:
                                 os.makedirs(dir_checkpoint, exist_ok=True)
                                 torch.save(net.state_dict(),
-                                         dir_checkpoint + f'best_{net_name}_{dataset_name}.pth')
+                                         dir_checkpoint + f'Best_{net_name}_{dataset_name}.pth')
                                 logging.info(f'Best model saved! Dice: {best_dice:.4f}')
                             except OSError:
                                 pass

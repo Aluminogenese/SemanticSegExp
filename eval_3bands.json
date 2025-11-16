@@ -3,17 +3,17 @@
       {
         "name": "UNet",
         "type": "unet",
-        "path": "checkpoints/BEST_unet_dat_3bands.pth"
+        "path": "checkpoints/BEST_unet_dat_4bands.pth"
       },
       {
         "name": "UNet++",
         "type": "unet_plusplus",
-        "path": "checkpoints/BEST_unet_plusplus_dat_3bands.pth"
+        "path": "checkpoints/BEST_unet_plusplus_dat_4bands.pth"
       },
       {
         "name": "HRNet-OCR",
         "type": "hrnet_ocr",
-        "path": "checkpoints/BEST_hrnet_ocr_dat_3bands.pth"
+        "path": "checkpoints/BEST_hrnet_ocr_dat_4bands.pth"
       }
     ]
   }

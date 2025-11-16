@@ -27,7 +27,7 @@ class ImprovedSSAF(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(num_bands // reduction, num_bands, 1)
         )
-        self.temperature = nn.Parameter(torch.ones(1) * 5.0)
+        self.temperature = nn.Parameter(torch.ones(1) * 10.0)
         
         # 2. 通道注意力 (SE Block)
         self.channel_attention = nn.Sequential(
