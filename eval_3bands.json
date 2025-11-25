@@ -11,9 +11,9 @@
         "path": "checkpoints/BEST_unet_plusplus_dat_4bands.pth"
       },
       {
-        "name": "HRNet-OCR",
-        "type": "hrnet_ocr",
-        "path": "checkpoints/BEST_hrnet_ocr_dat_4bands.pth"
+        "name": "HRNet",
+        "type": "hrnet",
+        "path": "checkpoints/BEST_hrnet_dat_4bands.pth"
       }
     ]
   }

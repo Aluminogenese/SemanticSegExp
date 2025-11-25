@@ -1,6 +1,6 @@
 python select_best_visualizations.py \
-    --test-img /mnt/U/Dat_Seg/dat_4bands/test/images/ \
-    --test-mask /mnt/U/Dat_Seg/dat_4bands/test/labels/ \
+    --test-img /home/lucianlu/data/dat_4bands/val/images/ \
+    --test-mask /home/lucianlu/data/dat_4bands/val/labels/ \
     --models-config eval_3bands.json \
     --in-ch 4 \
     --specify-file fig/3bands.txt \

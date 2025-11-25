@@ -1,7 +1,8 @@
 python select_best_visualizations.py \
     --test-img /home/lucianlu/data/dat_4bands/val/images/ \
     --test-mask /home/lucianlu/data/dat_4bands/val/labels/ \
-    --models-config eval_4bands.json \
+    --models-config eval_3bands.json \
     --in-ch 4 \
-    --specify-file fig/4bands.txt \
-    --output-dir fig/4bands \
+    --strategy best \
+    --num-samples 10 \
+    --output-dir fig/3bands_pre \

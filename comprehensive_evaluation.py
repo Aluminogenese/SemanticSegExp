@@ -32,7 +32,7 @@ import pandas as pd
 from scipy import stats
 import seaborn as sns
 
-from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNetV2
+from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNet
 from predict import read_image_any, normalize_image
 
 
@@ -510,7 +510,7 @@ def main():
     elif args.model_type == 'hrnet':
         net = HRNet(in_channels=args.in_ch, num_classes=1, base_channels=48)
     elif args.model_type == 'ms_hrnet_v2':
-        net = MSHRNetV2(in_channels=args.in_ch, num_classes=1, base_channels=48)
+        net = MSHRNet(in_channels=args.in_ch, num_classes=1, base_channels=48)
     else:
         raise ValueError(f'Unknown model architecture: {args.model_type}')
     

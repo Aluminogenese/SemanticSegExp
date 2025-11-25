@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import binary_dilation, binary_erosion
 import json
 
-from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR, MSHRNetAblation
+from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNet
 from predict import read_image_any, normalize_image
 
 
@@ -350,16 +350,8 @@ def main():
         net = DeepLabV3Plus(in_channels=args.in_ch, num_classes=1)
     elif args.model_type == 'hrnet':
         net = HRNet(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model_type == 'hrnet_ocr':
-        net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model_type == 'ms_hrnet_w48':
-        net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model_type == 'ms_hrnet_no_ssaf':
-        net = MSHRNetAblation(in_channels=args.in_ch, num_classes=1, base_channels=48,
-                             use_ssaf=False, use_msbr=True)
-    elif args.model_type == 'ms_hrnet_no_msbr':
-        net = MSHRNetAblation(in_channels=args.in_ch, num_classes=1, base_channels=48,
-                             use_ssaf=True, use_msbr=False)
+    elif args.model_type == 'ms_hrnet':
+        net = MSHRNet(in_channels=args.in_ch, num_classes=1, base_channels=48)
     else:
         raise ValueError(f'Unknown model architecture: {args.model}')
     

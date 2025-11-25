@@ -333,7 +333,7 @@ if __name__ == '__main__':
     logging.info(f'Using device {device}')
 
     # 导入模型
-    from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNetV2
+    from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNet
     
     if args.model == 'unet':
         net = UNet(in_channels=args.in_ch, num_classes=1)
@@ -345,8 +345,8 @@ if __name__ == '__main__':
         net = DeepLabV3Plus(in_channels=args.in_ch, num_classes=1)
     elif args.model == 'hrnet':
         net = HRNet(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model == 'ms_hrnet_v2':
-        net = MSHRNetV2(in_channels=args.in_ch, num_classes=1, 
+    elif args.model == 'ms_hrnet':
+        net = MSHRNet(in_channels=args.in_ch, num_classes=1, 
                         base_channels=48, use_minimal_ssaf=False)
     else:
         raise ValueError(f'Unknown model architecture: {args.model}')
