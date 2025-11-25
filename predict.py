@@ -14,7 +14,7 @@ from PIL import Image
 from glob import glob
 import json
 
-from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR
+from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNetV2
 
 def read_image_any(path):
     """读取任意格式图像"""
@@ -179,8 +179,7 @@ def main():
     parser.add_argument('--output', '-o',default='predict_results', help='输出目录或文件路径')
     parser.add_argument('--model-type', default='unet',
                        choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 
-                               'hrnet', 'hrnet_ocr', 'ms_hrnet',
-                                'ms_hrnet_v2', 'ms_hrnet_v2_min'],
+                               'hrnet', 'ms_hrnet_v2'],
                        help='模型类型')
     parser.add_argument('--in-ch', type=int, default=4, help='输入通道数')
     parser.add_argument('--tta', action='store_true', help='启用TTA（8x变换）')
@@ -207,17 +206,8 @@ def main():
         net = DeepLabV3Plus(in_channels=args.in_ch, num_classes=1)
     elif args.model_type == 'hrnet':
         net = HRNet(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model_type == 'hrnet_ocr':
-        net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model_type == 'ms_hrnet_w48':
-        net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     elif args.model_type == 'ms_hrnet_v2':
-        from models import MSHRNetV2
         net = MSHRNetV2(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model_type == 'ms_hrnet_v2_min':
-        from models import MSHRNetV2
-        net = MSHRNetV2(in_channels=args.in_ch, num_classes=1, 
-                        base_channels=48, use_minimal_ssaf=True)
     else:
         raise ValueError(f'Unknown model architecture: {args.model}')
     

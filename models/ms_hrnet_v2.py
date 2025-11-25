@@ -6,7 +6,7 @@ from .ssaf_improved import ImprovedSSAF  # 或 MinimalSSAF
 
 # 复用原有的 HRNet 组件
 from .ms_hrnet import (
-    BasicBlock, HRNetBranch, FuseLayer, SpatialOCR
+    BasicBlock, HRNetBranch, FuseLayer
 )
 
 
@@ -99,17 +99,9 @@ class MSHRNetV2(nn.Module):
             nn.ReLU(inplace=True)
         )
         
-        # OCR
-        self.ocr = SpatialOCR(
-            in_channels=base_channels * 4,
-            key_channels=base_channels * 2,
-            out_channels=base_channels * 2,
-            num_classes=num_classes
-        )
-        
         # Final classifier
         self.final_conv = nn.Sequential(
-            nn.Conv2d(base_channels * 2, base_channels, 3, padding=1, bias=False),
+            nn.Conv2d(base_channels * 4, base_channels, 3, padding=1, bias=False),
             nn.BatchNorm2d(base_channels),
             nn.ReLU(inplace=True),
             nn.Conv2d(base_channels, num_classes, 1)
@@ -163,16 +155,11 @@ class MSHRNetV2(nn.Module):
         feats = torch.cat([x0, x1, x2, x3], dim=1)
         feats = self.aggregate(feats)
         
-        # OCR
-        feats, aux_pred = self.ocr(feats)
-        
         # Final prediction
         out = self.final_conv(feats)
         out = F.interpolate(out, size=input_size, mode='bilinear', align_corners=True)
         
         if self.training:
-            aux_pred = F.interpolate(aux_pred, size=input_size, 
-                                     mode='bilinear', align_corners=True)
-            return out, aux_pred, attention_maps
+            return out, attention_maps
         else:
             return out

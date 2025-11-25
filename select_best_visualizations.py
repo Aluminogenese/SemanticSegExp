@@ -57,7 +57,7 @@ import seaborn as sns
 # 导入现有的模型和工具
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
-from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR
+from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNetV2
 from predict import read_image_any, normalize_image
 
 
@@ -88,17 +88,8 @@ def load_model(model_type, model_path, in_channels, device):
         net = DeepLabV3Plus(in_channels=in_channels, num_classes=1)
     elif model_type == 'hrnet':
         net = HRNet(in_channels=in_channels, num_classes=1, base_channels=48)
-    elif model_type == 'hrnet_ocr':
-        net = HRNetOCR(in_channels=in_channels, num_classes=1, base_channels=48)
-    elif model_type == 'ms_hrnet':
-        net = MSHRNetOCR(in_channels=in_channels, num_classes=1, base_channels=48)
     elif model_type == 'ms_hrnet_v2':
-        from models import MSHRNetV2
         net = MSHRNetV2(in_channels=in_channels, num_classes=1, base_channels=48)
-    elif model_type == 'ms_hrnet_v2_min':
-        from models import MSHRNetV2
-        net = MSHRNetV2(in_channels=in_channels, num_classes=1, 
-                        base_channels=48, use_minimal_ssaf=True)
     else:
         raise ValueError(f'Unknown model type: {model_type}')
     

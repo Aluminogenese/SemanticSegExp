@@ -32,7 +32,7 @@ import pandas as pd
 from scipy import stats
 import seaborn as sns
 
-from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR
+from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNetV2
 from predict import read_image_any, normalize_image
 
 
@@ -472,8 +472,7 @@ def main():
     parser.add_argument('--model', '-m', required=True, help='模型权重路径')
     parser.add_argument('--model-type', required=True,
                        choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 
-                               'hrnet', 'hrnet_ocr', 'ms_hrnet',
-                               'ms_hrnet_no_ssaf', 'ms_hrnet_no_msbr', 'ms_hrnet_v2', 'ms_hrnet_v2_min'],
+                               'hrnet', 'ms_hrnet_v2'],
                        help='模型类型')
     parser.add_argument('--model-name', default=None, help='模型名称（用于报告）')
     
@@ -510,18 +509,8 @@ def main():
         net = DeepLabV3Plus(in_channels=args.in_ch, num_classes=1)
     elif args.model_type == 'hrnet':
         net = HRNet(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model_type == 'hrnet_ocr':
-        net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model_type == 'ms_hrnet':
-        net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
     elif args.model_type == 'ms_hrnet_v2':
-        from models import MSHRNetV2
         net = MSHRNetV2(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model_type == 'ms_hrnet_v2_min':
-        from models import MSHRNetV2
-        net = MSHRNetV2(in_channels=args.in_ch, num_classes=1, 
-                        base_channels=48, use_minimal_ssaf=True)
-
     else:
         raise ValueError(f'Unknown model architecture: {args.model_type}')
     

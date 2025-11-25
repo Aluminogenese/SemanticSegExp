@@ -109,8 +109,7 @@ def train_net(net,
               save_cp=True,
               img_scale=1.0,
               mask_suffix='',
-              warmup_epochs=5,
-              use_deep_supervision=True):
+              warmup_epochs=5):
 
     # 创建数据集
     train = DatasetClass(train_img, train_mask, img_scale, mask_suffix=mask_suffix, 
@@ -140,7 +139,6 @@ def train_net(net,
         Checkpoints:     {save_cp}
         Device:          {device.type}
         Images scaling:  {img_scale}
-        Deep Supervision: {use_deep_supervision}
     ''')
 
     # 组合损失函数
@@ -150,9 +148,6 @@ def train_net(net,
         'focal': 0.5,
         'boundary': 0.3
     }).to(device)
-    
-    # 辅助损失（用于深度监督）
-    aux_criterion = nn.BCEWithLogitsLoss()
 
     # AdamW优化器（比RMSprop更适合HRNet）
     optimizer = optim.AdamW(net.parameters(), lr=lr, weight_decay=0.01)
@@ -187,42 +182,19 @@ def train_net(net,
                 # 前向传播（兼容无 aux_pred 的模型）
                 outputs = net(imgs)
                 if net_name in ['ms_hrnet_v2', 'ms_hrnet_v2_min']:
-                    if isinstance(outputs, tuple) and len(outputs) == 3:
-                        masks_pred, aux_pred, attention_maps = outputs
+                    if isinstance(outputs, tuple) and len(outputs) == 2:
+                        masks_pred, attention_maps = outputs
                     else:
                         masks_pred = outputs
-                        aux_pred = None
                         attention_maps = None
-                elif net_name in ['ms_hrnet', 'ms_hrnet1']:
-                    # MS-HRNet 及其消融版本
-                    if isinstance(outputs, tuple) and len(outputs) == 3:
-                        masks_pred, aux_pred, spectral_weights = outputs
-                    else:
-                        masks_pred = outputs
-                        aux_pred = None
-                        spectral_weights = None
-                elif net_name in ['hrnet_ocr', 'pspnet']:
-                    # HRNetOCR 和 PSPNet 有辅助输出
-                    if isinstance(outputs, (tuple, list)):
-                        masks_pred = outputs[0]
-                        aux_pred = outputs[1] if len(outputs) > 1 else None
-                    else:
-                        masks_pred = outputs
-                        aux_pred = None
-                    spectral_weights = None
                 else:
                     # 其他模型
                     masks_pred = outputs
-                    aux_pred = None
-                    spectral_weights = None
+                    attention_maps = None
 
                 # 计算损失
                 main_loss = criterion(masks_pred, true_masks)
                 loss = main_loss
-                if use_deep_supervision and (aux_pred is not None):
-                    aux_loss = aux_criterion(aux_pred, true_masks)
-                    loss = main_loss + 0.4 * aux_loss
-
 
                 epoch_loss += loss.item()
                 writer.add_scalar('Loss/train', loss.item(), global_step)
@@ -339,9 +311,7 @@ def get_args():
                        help='Downscaling factor of images')
     parser.add_argument('--model', type=str, default='ms_hrnet_v2',
                    choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 
-                           'hrnet', 'hrnet_ocr', 'ms_hrnet', 
-                           'ms_hrnet_v2',      # 新增 - 改进版
-                           'ms_hrnet_v2_min'   # 新增 - 轻量版
+                           'hrnet', 'ms_hrnet_v2'
                    ])
     parser.add_argument('--in-ch', type=int, default=4,
                        help='Number of input channels')
@@ -351,8 +321,6 @@ def get_args():
                        help='Dataset name')
     parser.add_argument('--warmup-epochs', type=int, default=5,
                        help='Number of warmup epochs')
-    parser.add_argument('--no-deep-supervision', action='store_true',
-                       help='Disable deep supervision')
     
     return parser.parse_args()
 
@@ -365,7 +333,7 @@ if __name__ == '__main__':
     logging.info(f'Using device {device}')
 
     # 导入模型
-    from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, HRNetOCR, MSHRNetOCR
+    from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNetV2
     
     if args.model == 'unet':
         net = UNet(in_channels=args.in_ch, num_classes=1)
@@ -377,21 +345,9 @@ if __name__ == '__main__':
         net = DeepLabV3Plus(in_channels=args.in_ch, num_classes=1)
     elif args.model == 'hrnet':
         net = HRNet(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model == 'hrnet_ocr':
-        net = HRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model == 'ms_hrnet':
-        net = MSHRNetOCR(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    elif args.model == 'ms_hrnet1':
-        from models.ms_hrnet1 import MSHRNetOCR1
-        net = MSHRNetOCR1(in_channels=args.in_ch, num_classes=1, base_channels=48)
-    if args.model == 'ms_hrnet_v2':
-        from models import MSHRNetV2
+    elif args.model == 'ms_hrnet_v2':
         net = MSHRNetV2(in_channels=args.in_ch, num_classes=1, 
                         base_channels=48, use_minimal_ssaf=False)
-    elif args.model == 'ms_hrnet_v2_min':
-        from models import MSHRNetV2
-        net = MSHRNetV2(in_channels=args.in_ch, num_classes=1, 
-                        base_channels=48, use_minimal_ssaf=True)
     else:
         raise ValueError(f'Unknown model architecture: {args.model}')
     
@@ -422,8 +378,7 @@ if __name__ == '__main__':
                   device=device,
                   img_scale=args.scale,
                   mask_suffix=args.mask_suffix,
-                  warmup_epochs=args.warmup_epochs,
-                  use_deep_supervision=not args.no_deep_supervision)
+                  warmup_epochs=args.warmup_epochs)
     except KeyboardInterrupt:
         torch.save(net.state_dict(), 'INTERRUPTED.pth')
         logging.info('Saved interrupt')
