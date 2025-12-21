@@ -136,7 +136,8 @@ class SpectralSpatialAttentionFusion(nn.Module):
             'channel_weights': channel_weights,
             'spatial_weights': spatial_weights,
             'gate_weights': gate_weights,
-            'temperature': temp.item()
+            'temperature': temp.item(),
+            'ssaf_output': x_output  # 添加输出特征图
         }
         
         return x_output, attention_maps
@@ -291,7 +292,7 @@ class MSHRNet(nn.Module):
         out = self.final_conv(feats)
         out = F.interpolate(out, size=input_size, mode='bilinear', align_corners=True)
         
-        if self.training:
-            return out, attention_maps
-        else:
-            return out
+        # if self.training:
+        return out, attention_maps
+        # else:
+        #     return out

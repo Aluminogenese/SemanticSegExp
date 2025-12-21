@@ -309,9 +309,9 @@ def get_args():
                        help='Load model from a .pth file')
     parser.add_argument('-s', '--scale', type=float, default=1.0,
                        help='Downscaling factor of images')
-    parser.add_argument('--model', type=str, default='ms_hrnet_v2',
+    parser.add_argument('--model', type=str, default='ms_hrnet',
                    choices=['unet', 'unet_plusplus', 'pspnet', 'deeplabv3_plus', 
-                           'hrnet', 'ms_hrnet_v2'
+                           'hrnet', 'ms_hrnet'
                    ])
     parser.add_argument('--in-ch', type=int, default=4,
                        help='Number of input channels')

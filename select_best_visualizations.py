@@ -88,7 +88,7 @@ def load_model(model_type, model_path, in_channels, device):
         net = DeepLabV3Plus(in_channels=in_channels, num_classes=1)
     elif model_type == 'hrnet':
         net = HRNet(in_channels=in_channels, num_classes=1, base_channels=48)
-    elif model_type == 'ms_hrnet_v2':
+    elif model_type == 'ms_hrnet':
         net = MSHRNet(in_channels=in_channels, num_classes=1, base_channels=48)
     else:
         raise ValueError(f'Unknown model type: {model_type}')
