@@ -292,7 +292,7 @@ class MSHRNet(nn.Module):
         out = self.final_conv(feats)
         out = F.interpolate(out, size=input_size, mode='bilinear', align_corners=True)
         
-        # if self.training:
-        return out, attention_maps
-        # else:
-        #     return out
+        if self.training:
+            return out, attention_maps
+        else:
+            return out

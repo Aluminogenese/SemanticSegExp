@@ -180,7 +180,7 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-checkpoints/
+checkpoints*/
 runs/
 results*/
 logs/

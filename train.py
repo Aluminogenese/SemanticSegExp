@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from utils.dataset import AdvancedDataset as DatasetClass
 
-dir_checkpoint = 'checkpoints/'
+dir_checkpoint = 'checkpoints_ablation/'
     
 class FocalLoss(nn.Module):
     """Focal Loss - 处理类别不平衡"""
@@ -93,7 +93,37 @@ class CombinedLoss(nn.Module):
         if self.weights.get('boundary', 0) > 0:
             loss += self.weights['boundary'] * self.boundary(inputs, targets)
         return loss
-
+def get_loss_identifier(loss_weights):
+    """
+    根据损失函数权重生成标识符
+    
+    Examples:
+        {'bce': 1.0} -> 'bce'
+        {'dice': 1.0} -> 'dice'
+        {'bce': 1.0, 'dice': 1.0} -> 'bce+dice'
+        {'bce': 1.0, 'dice': 1.0, 'focal': 0.5, 'boundary': 0.3} -> 'combined'
+    """
+    # 检查是否是完整的组合损失
+    combined_config = {'bce': 1.0, 'dice': 1.0, 'focal': 0.5, 'boundary': 0.3}
+    if loss_weights == combined_config:
+        return 'combined'
+    
+    # 检查常见的组合
+    if loss_weights == {'bce': 1.0, 'dice': 1.0}:
+        return 'bce+dice'
+    if loss_weights == {'dice': 1.0, 'focal': 1.0}:
+        return 'dice+focal'
+    
+    # 生成通用标识
+    active_losses = []
+    for loss_name in ['bce', 'dice', 'focal', 'boundary']:
+        if loss_name in loss_weights and loss_weights[loss_name] > 0:
+            active_losses.append(loss_name)
+    
+    if not active_losses:
+        return 'noloss'  # 不应该出现
+    
+    return '+'.join(active_losses)
 
 def train_net(net,
               net_name,
@@ -109,7 +139,8 @@ def train_net(net,
               save_cp=True,
               img_scale=1.0,
               mask_suffix='',
-              warmup_epochs=5):
+              warmup_epochs=5,
+              loss_weights=None):
 
     # 创建数据集
     train = DatasetClass(train_img, train_mask, img_scale, mask_suffix=mask_suffix, 
@@ -125,15 +156,22 @@ def train_net(net,
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=False, 
                           num_workers=8, pin_memory=True, drop_last=True)
 
-    writer = SummaryWriter(comment=f'_{net_name}_{dataset_name}_LR_{lr}_BS_{batch_size}')
     global_step = 0
 
+    if loss_weights is None:
+        loss_weights = {'bce': 1.0, 'dice': 1.0, 'focal': 0.5, 'boundary': 0.3}
+    loss_id = get_loss_identifier(loss_weights)
+    experiment_id = f"{net_name}_{loss_id}_{dataset_name}"
+    writer = SummaryWriter(comment=f'_{experiment_id}_LR_{lr}_BS_{batch_size}')
     logging.info(f'''Starting training:
         Network:         {net_name}
         Dataset:         {dataset_name}
+        Loss ID:         {loss_id}
+        Experiment ID:   {experiment_id}
         Epochs:          {epochs}
         Batch size:      {batch_size}
         Learning rate:   {lr}
+        Loss weights:    {loss_weights}
         Training size:   {n_train}
         Validation size: {n_val}
         Checkpoints:     {save_cp}
@@ -142,12 +180,7 @@ def train_net(net,
     ''')
 
     # 组合损失函数
-    criterion = CombinedLoss(weights={
-        'bce': 1.0,
-        'dice': 1.0,
-        'focal': 0.5,
-        'boundary': 0.3
-    }).to(device)
+    criterion = CombinedLoss(weights=loss_weights).to(device)
 
     # AdamW优化器（比RMSprop更适合HRNet）
     optimizer = optim.AdamW(net.parameters(), lr=lr, weight_decay=0.01)
@@ -181,16 +214,12 @@ def train_net(net,
 
                 # 前向传播（兼容无 aux_pred 的模型）
                 outputs = net(imgs)
-                if net_name in ['ms_hrnet_v2', 'ms_hrnet_v2_min']:
-                    if isinstance(outputs, tuple) and len(outputs) == 2:
-                        masks_pred, attention_maps = outputs
-                    else:
-                        masks_pred = outputs
-                        attention_maps = None
+                if isinstance(outputs, tuple) and len(outputs) == 2:
+                    masks_pred, attention_maps = outputs
                 else:
-                    # 其他模型
                     masks_pred = outputs
                     attention_maps = None
+
 
                 # 计算损失
                 main_loss = criterion(masks_pred, true_masks)
@@ -226,9 +255,10 @@ def train_net(net,
                         if save_cp:
                             try:
                                 os.makedirs(dir_checkpoint, exist_ok=True)
+                                checkpoint_name = f'BEST_{experiment_id}.pth'
                                 torch.save(net.state_dict(),
-                                         dir_checkpoint + f'Best_{net_name}_{dataset_name}.pth')
-                                logging.info(f'Best model saved! Dice: {best_dice:.4f}')
+                                        os.path.join(dir_checkpoint, checkpoint_name))
+                                logging.info(f'Best model saved: {checkpoint_name} (Dice: {best_dice:.4f})')
                             except OSError:
                                 pass
                     
@@ -275,9 +305,10 @@ def train_net(net,
         if save_cp and (epoch + 1) % 100 == 0:
             try:
                 os.makedirs(dir_checkpoint, exist_ok=True)
+                checkpoint_name = f'CP_{experiment_id}_epoch{epoch + 1}.pth'
                 torch.save(net.state_dict(),
-                         dir_checkpoint + f'CP_{net_name}_{dataset_name}_epoch{epoch + 1}.pth')
-                logging.info(f'Checkpoint {epoch + 1} saved!')
+                        os.path.join(dir_checkpoint, checkpoint_name))
+                logging.info(f'Checkpoint {epoch + 1} saved: {checkpoint_name}')
             except OSError:
                 pass
 
@@ -321,9 +352,45 @@ def get_args():
                        help='Dataset name')
     parser.add_argument('--warmup-epochs', type=int, default=5,
                        help='Number of warmup epochs')
-    
+    parser.add_argument('--loss-weights', nargs='+', default=['combined'],
+                       help='Loss function weights. Examples: '
+                            '"bce=1.0" for BCE only, '
+                            '"bce=1.0 dice=1.0" for BCE+Dice, '
+                            '"combined" for default combined loss')
     return parser.parse_args()
 
+def parse_loss_weights(loss_args):
+    """
+    解析损失函数权重配置
+    
+    Args:
+        loss_args: List of strings like ['bce=1.0', 'dice=1.0'] or ['combined']
+    
+    Returns:
+        dict: {'bce': 1.0, 'dice': 1.0, 'focal': 0.5, 'boundary': 0.3}
+    """
+    # 预定义的组合
+    PRESETS = {
+        'combined': {'bce': 1.0, 'dice': 1.0, 'focal': 0.5, 'boundary': 0.3},
+        'bce_dice': {'bce': 1.0, 'dice': 1.0},
+        'dice_focal': {'dice': 1.0, 'focal': 1.0},
+    }
+    
+    # 如果是预定义的组合
+    if len(loss_args) == 1 and loss_args[0] in PRESETS:
+        return PRESETS[loss_args[0]]
+    
+    # 否则解析自定义配置
+    weights = {}
+    for arg in loss_args:
+        if '=' in arg:
+            key, value = arg.split('=')
+            weights[key.strip()] = float(value.strip())
+        else:
+            # 如果只有key没有value,默认为1.0
+            weights[arg.strip()] = 1.0
+    
+    return weights
 
 if __name__ == '__main__':
 
@@ -364,6 +431,10 @@ if __name__ == '__main__':
     total_params = sum(p.numel() for p in net.parameters())
     logging.info(f'Total parameters: {total_params:,}')
 
+    # 解析损失权重
+    loss_weights = parse_loss_weights(args.loss_weights)
+    logging.info(f'Loss configuration: {loss_weights}')
+
     try:
         train_net(net=net,
                   net_name=args.model,
@@ -378,7 +449,8 @@ if __name__ == '__main__':
                   device=device,
                   img_scale=args.scale,
                   mask_suffix=args.mask_suffix,
-                  warmup_epochs=args.warmup_epochs)
+                  warmup_epochs=args.warmup_epochs,
+                  loss_weights=loss_weights)
     except KeyboardInterrupt:
         torch.save(net.state_dict(), 'INTERRUPTED.pth')
         logging.info('Saved interrupt')
