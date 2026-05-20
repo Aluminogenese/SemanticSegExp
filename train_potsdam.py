@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 from torch import optim
 from tqdm import tqdm
+import random
 
 from eval import eval_net
 from torch.utils.tensorboard import SummaryWriter
@@ -161,7 +162,7 @@ def train_net(net,
     if loss_weights is None:
         loss_weights = {'bce': 1.0, 'dice': 1.0, 'focal': 0.5, 'boundary': 0.3}
     loss_id = get_loss_identifier(loss_weights)
-    experiment_id = f"{net_name}_{loss_id}_{dataset_name}"
+    experiment_id = f"{net_name}_{loss_id}_{dataset_name}_{batch_size}"
     writer = SummaryWriter(comment=f'_{experiment_id}_LR_{lr}_BS_{batch_size}')
     logging.info(f'''Starting training:
         Network:         {net_name}
@@ -216,6 +217,8 @@ def train_net(net,
                 outputs = net(imgs)
                 if isinstance(outputs, tuple) and len(outputs) == 2:
                     masks_pred, attention_maps = outputs
+                    if net_name=='pspnet':
+                        attention_maps = None
                 else:
                     masks_pred = outputs
                     attention_maps = None
@@ -398,6 +401,12 @@ if __name__ == '__main__':
     args = get_args()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Using device {device}')
+
+    random.seed(123)
+    np.random.seed(123)
+    torch.manual_seed(123)
+    torch.cuda.manual_seed(123)
+    torch.cuda.manual_seed_all(123)
 
     # 导入模型
     from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNet, UNetFormer

@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from comprehensive_evaluation import ComprehensiveEvaluator
 
 import torch
-from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNet
+from models import UNet, UNetPlusPlus, PSPNet, DeepLabV3Plus, HRNet, MSHRNet, UNetFormer
 
 
 def load_model(model_type, model_path, in_channels, device):
@@ -41,6 +41,8 @@ def load_model(model_type, model_path, in_channels, device):
         net = HRNet(in_channels=in_channels, num_classes=1, base_channels=48)
     elif model_type == 'ms_hrnet':
         net = MSHRNet(in_channels=in_channels, num_classes=1, base_channels=48)
+    elif model_type == 'unetformer':
+        net = UNetFormer(in_channels=in_channels, num_classes=1)
     else:
         raise ValueError(f'Unknown model type: {model_type}')
     
@@ -80,12 +82,12 @@ def generate_comparison_table(all_summaries, model_names):
         summary = all_summaries[name]
         data.append({
             'Model': name,
-            'Dice': f"{summary['mean_dice']:.4f} ± {summary['std_dice']:.4f}",
-            'IoU': f"{summary['mean_iou']:.4f} ± {summary['std_iou']:.4f}",
-            'Precision': f"{summary['mean_precision']:.4f} ± {summary['std_precision']:.4f}",
-            'Recall': f"{summary['mean_recall']:.4f} ± {summary['std_recall']:.4f}",
-            'F1': f"{summary['mean_f1']:.4f} ± {summary['std_f1']:.4f}",
-            'B-IoU': f"{summary['mean_boundary_iou']:.4f} ± {summary['std_boundary_iou']:.4f}",
+            'Dice': f"{summary['mean_dice']:.4f}",
+            'IoU': f"{summary['mean_iou']:.4f}",
+            'Precision': f"{summary['mean_precision']:.4f}",
+            'Recall': f"{summary['mean_recall']:.4f}",
+            'F1': f"{summary['mean_f1']:.4f}",
+            'B-IoU': f"{summary['mean_boundary_iou']:.4f}",
             'Dice_mean': summary['mean_dice'],  # 用于排序
         })
     
